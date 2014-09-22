@@ -119,7 +119,16 @@ def export_remote_patches(pr_number):
             )
 
 
+def check_is_rolling():
+    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+        with cd("/home/erp/src/erp"):
+            res = sudo("git branch | grep '* rolling'")
+            if res.return_code:
+                abort("The repository is not in rolling mode")
+
+
 def apply_pr(pr_number, from_number):
+    check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
     mark_deploy_status(deploy_id, 'pending')
     export_remote_patches(pr_number)
