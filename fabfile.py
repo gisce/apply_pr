@@ -127,7 +127,7 @@ def check_is_rolling():
                 abort("The repository is not in rolling mode")
 
 
-def apply_pr(pr_number, from_number):
+def apply_pr(pr_number, from_number=0):
     check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
     mark_deploy_status(deploy_id, 'pending')
