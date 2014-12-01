@@ -51,7 +51,15 @@ def find_from_to_commits(pr_number):
     pull = json.loads(r.text)
     from_commit = pull['base']['sha']
     to_commit = pull['head']['sha']
-    branch = pull['head']['label'].split(':')[1]
+    head_origin, head_branch = pull['head']['label'].split(':')
+    base_origin, base_branch = pull['base']['label'].split(':')
+    if head_origin != base_origin:
+        if not pull['merged']:
+            abort("This pull request is not from the default origin. You have "
+                  "to merge first.")
+        else:
+            head_branch = base_branch
+    branch = head_branch
     logger.info('Commits: %s..%s (%s)' % (from_commit, to_commit, branch))
     return from_commit, to_commit, branch
 
