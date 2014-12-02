@@ -3,7 +3,9 @@ import json
 import logging
 import os
 
-from fabric.api import local, run, cd, put, settings, abort, sudo, hide
+from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
+from osconf import config_from_environment
+from slugify import slugify
 import requests
 
 
@@ -12,17 +14,25 @@ logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 
-def get_token():
-    return os.environ.get('GITHUB_TOKEN', '')
+def github_config(**config):
+    return config_from_environment('GITHUB', ['token'], **config)
 
 
-def upload_patches(name):
-    remote_dir = '~/src/erp/patches/%s' % name
+def apply_pr_config(**config):
+    return config_from_environment('APPLY_PR', **config)
+
+
+@task
+def upload_patches(pr_number):
+    remote_dir = '/home/erp/src/erp/patches/%s' % pr_number
     with settings(sudo_user='erp'):
-        run("mkdir -p %s" % remote_dir)
-        put('deploy/patches/%s/*.patch' % name, remote_dir)
+        sudo("rm -rf %s" % remote_dir)
+        sudo("mkdir -p %s" % remote_dir)
+        put('deploy/patches/%s/*.patch' % pr_number, remote_dir, use_sudo=True,
+            temp_dir='/tmp')
 
 
+@task
 def apply_remote_patches(name, from_patch=0):
     from_patch = int(from_patch)
     with settings(warn_only=True, sudo_user='erp'):
@@ -42,8 +52,9 @@ def apply_remote_patches(name, from_patch=0):
                     abort('Aborting due patch number %s not apply' % number)
 
 
+@task
 def find_from_to_commits(pr_number):
-    headers = {'Authorization': 'token %s' % get_token()}
+    headers = {'Authorization': 'token %s' % github_config()['token']}
     url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
     r = requests.get(url, headers=headers)
     if r.status_code != 200:
@@ -51,26 +62,53 @@ def find_from_to_commits(pr_number):
     pull = json.loads(r.text)
     from_commit = pull['base']['sha']
     to_commit = pull['head']['sha']
-    branch = pull['head']['label'].split(':')[1]
+    head_origin, head_branch = pull['head']['label'].split(':')
+    base_origin, base_branch = pull['base']['label'].split(':')
+    if head_origin != base_origin or pull['merged']:
+        branch = None
+    else:
+        branch = head_branch
     logger.info('Commits: %s..%s (%s)' % (from_commit, to_commit, branch))
     return from_commit, to_commit, branch
 
 
-def export_patches(from_commit, to_commit, name):
+@task
+def export_patches_from_git(from_commit, to_commit, pr_number):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
-    local("mkdir -p deploy/patches/%s" % name)
+    local("mkdir -p deploy/patches/%s" % pr_number)
     local("git format-patch -o deploy/patches/%s %s..%s" % (
-        name, from_commit, to_commit)
+        pr_number, from_commit, to_commit)
     )
 
 
+@task
+def export_patches_from_github(pr_number):
+    patch_folder = "deploy/patches/%s" % pr_number
+    local("mkdir -p %s" % patch_folder)
+    logger.info('Exporting patches from GitHub')
+    headers = {'Authorization': 'token %s' % github_config()['token']}
+    url = "https://api.github.com/repos/gisce/erp/pulls/%s/commits" % pr_number
+    r = requests.get(url, headers=headers)
+    commits = json.loads(r.text)
+    patch_headers = headers.copy()
+    patch_headers['Accept'] = 'application/vnd.github.patch'
+    for idx, commit in enumerate(commits):
+        r = requests.get(commit['url'], headers=patch_headers)
+        message = slugify(commit['commit']['message'])
+        filename = '%04i-%s.patch' % (idx + 1, message)
+        with open(os.path.join(patch_folder, filename), 'w') as patch:
+            logger.info('Patch %s exported.' % filename)
+            patch.write(r.text)
+
+
+@task
 def mark_to_deploy(pr_number):
     logger.info('Marking as deployed on GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
-        'Authorization': 'token %s' % get_token()
+        'Authorization': 'token %s' % github_config()['token']
     }
-    commit = find_from_to_commits(pr_number)[2]
+    commit = find_from_to_commits(pr_number)[1]
     host = run("uname -n")
     payload = {
         'ref': commit, 'task': 'deploy', 'auto_merge': False,
@@ -87,11 +125,12 @@ def mark_to_deploy(pr_number):
     return deploy_id
 
 
+@task
 def mark_deploy_status(deploy_id, state='success'):
     logger.info('Marking as deployed %s on GitHub' % state)
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
-        'Authorization': 'token %s' % get_token()
+        'Authorization': 'token %s' % github_config()['token']
     }
 
     url = "https://api.github.com/repos/gisce/erp/deployments/%s/statuses"
@@ -102,23 +141,15 @@ def mark_deploy_status(deploy_id, state='success'):
 
 
 def export_patches_pr(pr_number):
+    local("mkdir -p deploy/patches/%s" % pr_number)
     from_commit, to_commit, branch = find_from_to_commits(pr_number)
-    export_patches(from_commit, to_commit, pr_number)
+    if branch is None:
+        export_patches_from_github(pr_number)
+    else:
+        export_patches_from_git(from_commit, to_commit, pr_number)
 
 
-def export_remote_patches(pr_number):
-    from_commit, to_commit, branch = find_from_to_commits(pr_number)
-    with settings(sudo_user='erp'):
-        logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
-        sudo("mkdir -p /home/erp/src/erp/patches/%s" % pr_number)
-        with cd("/home/erp/src/erp"):
-            sudo("git fetch origin")
-        with cd("/home/erp/src/erp"):
-            sudo("git format-patch -o patches/%s origin/%s %s..%s" % (
-                pr_number, branch, from_commit, to_commit)
-            )
-
-
+@task
 def check_is_rolling():
     with settings(hide('everything'), sudo_user='erp', warn_only=True):
         with cd("/home/erp/src/erp"):
@@ -127,10 +158,12 @@ def check_is_rolling():
                 abort("The repository is not in rolling mode")
 
 
+@task
 def apply_pr(pr_number, from_number=0):
     check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
     mark_deploy_status(deploy_id, 'pending')
-    export_remote_patches(pr_number)
+    export_patches_pr(pr_number)
+    upload_patches(pr_number)
     apply_remote_patches(pr_number, from_number)
     mark_deploy_status(deploy_id, 'success')

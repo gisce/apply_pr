@@ -1,0 +1,4 @@
+fabric
+osconf
+python-slugify
+requests
