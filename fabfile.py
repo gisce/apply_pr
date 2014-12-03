@@ -24,12 +24,14 @@ def apply_pr_config(**config):
 
 @task
 def upload_patches(pr_number):
-    remote_dir = '/home/erp/src/erp/patches/%s' % pr_number
-    with settings(sudo_user='erp'):
-        sudo("rm -rf %s" % remote_dir)
-        sudo("mkdir -p %s" % remote_dir)
-        put('deploy/patches/%s/*.patch' % pr_number, remote_dir, use_sudo=True,
-            temp_dir='/tmp')
+    temp_dir = '/tmp/%s' % pr_number
+    remote_dir = '/home/erp/src/erp/patches/'
+    sudo("mkdir -p %s" % remote_dir)
+    sudo("mkdir -p %s" % temp_dir)
+    put('deploy/patches/%s/*.patch' % pr_number, temp_dir, use_sudo=True)
+    sudo("mv %s %s" % (temp_dir, remote_dir))
+    sudo("chown -R erp: %s" % remote_dir)
+
 
 
 @task
@@ -83,11 +85,12 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
 
 @task
 def export_patches_from_github(pr_number):
+    repo = github_config(repository='gisce/erp')['repository']
     patch_folder = "deploy/patches/%s" % pr_number
     local("mkdir -p %s" % patch_folder)
     logger.info('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
-    url = "https://api.github.com/repos/gisce/erp/pulls/%s/commits" % pr_number
+    url = "https://api.github.com/repos/%s/pulls/%s/commits" % (repo, pr_number)
     r = requests.get(url, headers=headers)
     commits = json.loads(r.text)
     patch_headers = headers.copy()
@@ -126,7 +129,7 @@ def mark_to_deploy(pr_number):
 
 
 @task
-def mark_deploy_status(deploy_id, state='success'):
+def mark_deploy_status(deploy_id, state='success', description=None):
     logger.info('Marking as deployed %s on GitHub' % state)
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
@@ -135,11 +138,14 @@ def mark_deploy_status(deploy_id, state='success'):
 
     url = "https://api.github.com/repos/gisce/erp/deployments/%s/statuses"
     payload = {'state': state}
+    if description is not None:
+        payload['description'] = description
     r = requests.post(url % deploy_id, data=json.dumps(payload),
                       headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
 
 
+@task
 def export_patches_pr(pr_number):
     local("mkdir -p deploy/patches/%s" % pr_number)
     from_commit, to_commit, branch = find_from_to_commits(pr_number)
@@ -162,8 +168,11 @@ def check_is_rolling():
 def apply_pr(pr_number, from_number=0):
     check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
-    mark_deploy_status(deploy_id, 'pending')
-    export_patches_pr(pr_number)
-    upload_patches(pr_number)
-    apply_remote_patches(pr_number, from_number)
-    mark_deploy_status(deploy_id, 'success')
+    try:
+        mark_deploy_status(deploy_id, 'pending')
+        export_patches_from_github(pr_number)
+        upload_patches(pr_number)
+        apply_remote_patches(pr_number, from_number)
+        mark_deploy_status(deploy_id, 'success')
+    except Exception, e:
+        mark_deploy_status(deploy_id, 'error', description=e.message)
