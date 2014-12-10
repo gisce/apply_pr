@@ -29,6 +29,7 @@ def upload_patches(pr_number):
     sudo("mkdir -p %s" % remote_dir)
     sudo("mkdir -p %s" % temp_dir)
     put('deploy/patches/%s/*.patch' % pr_number, temp_dir, use_sudo=True)
+    sudo("rm -rf %s/%s" % (remote_dir, pr_number))
     sudo("mv %s %s" % (temp_dir, remote_dir))
     sudo("chown -R erp: %s" % remote_dir)
 
