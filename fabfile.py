@@ -168,13 +168,14 @@ def check_is_rolling():
 
 
 @task
-def apply_pr(pr_number, from_number=0):
+def apply_pr(pr_number, from_number=0, skip_upload=False):
     check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
     try:
         mark_deploy_status(deploy_id, 'pending')
         export_patches_from_github(pr_number)
-        upload_patches(pr_number)
+        if not skip_upload:
+            upload_patches(pr_number)
         apply_remote_patches(pr_number, from_number)
         mark_deploy_status(deploy_id, 'success')
     except Exception, e:
