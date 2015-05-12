@@ -126,6 +126,9 @@ def mark_to_deploy(pr_number):
     url = "https://api.github.com/repos/gisce/erp/deployments"
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     res = json.loads(r.text)
+    if not 'id' in res:
+        logger.info('Not marking deployment in github: %s' % res['message'])
+        return 0
     deploy_id = res['id']
     logger.info('Deploy id: %s' % deploy_id)
     return deploy_id
@@ -133,6 +136,8 @@ def mark_to_deploy(pr_number):
 
 @task
 def mark_deploy_status(deploy_id, state='success', description=None):
+    if not deploy_id:
+        return
     logger.info('Marking as deployed %s on GitHub' % state)
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
