@@ -98,7 +98,7 @@ def export_patches_from_github(pr_number):
     patch_headers['Accept'] = 'application/vnd.github.patch'
     for idx, commit in enumerate(commits):
         r = requests.get(commit['url'], headers=patch_headers)
-        message = slugify(commit['commit']['message'])
+        message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (idx + 1, message)
         with open(os.path.join(patch_folder, filename), 'w') as patch:
             logger.info('Patch %s exported.' % filename)
