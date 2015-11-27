@@ -11,7 +11,7 @@ from GitHub and set to the `GITHUB_TOKEN` environment variable.
 HOW TO: Apply pull requests
 ===========================
 
-NOTE: do not include braces on the following commands
+**NOTE**: do not include braces on the following commands
 
 1. Download apply_pr repository and move to apply_pr directory
 2. If fabric is not installed, switch to a virtualenv and run: `pip install fabric`
