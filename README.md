@@ -28,6 +28,8 @@ NOTE: do not include braces on the following commands
 7. Login as root
 8. Restart the server running the following commands:
 
-    `$ supervisor ctl`
-    `$ status (now we can see the names of the servers to be restarted)`
-    `$ restart {server name 1} {server name 2} ...`
+    ```sh
+    $ supervisor ctl
+    $ status (now we can see the names of the servers to be restarted)
+    $ restart {server name 1} {server name 2} ...
+    ```
