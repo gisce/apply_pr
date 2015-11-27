@@ -41,18 +41,26 @@ def apply_remote_patches(name, from_patch=0):
     with settings(warn_only=True, sudo_user='erp'):
         with hide('output'):
             patches = sudo("ls -1 /home/erp/src/erp/patches/%s/*.patch" % name)
+
+        patches_to_apply = []
         for patch in patches.split():
             number = int(os.path.basename(patch).split('-')[0])
             if number < from_patch:
                 logger.info('Skipping patch %s' % patch)
                 continue
+            patches_to_apply.append(patch)
+
+        if patches_to_apply:
+            patches_to_apply = ' '.join(patches_to_apply)
             with cd("/home/erp/src/erp"):
-                result = sudo("git am %s" % patch)
+                result = sudo("git am %s" % patches_to_apply)
                 if result.failed:
-                    logger.error('Applying patches for version %s failed' % name)
+                    logger.error(
+                        'Applying patches for version %s failed' % name
+                    )
                     with cd('/home/erp/src/erp'):
                         sudo("git am --abort")
-                    abort('Aborting due patch number %s not apply' % number)
+                    abort('Aborting due some patch does not apply')
 
 
 @task
