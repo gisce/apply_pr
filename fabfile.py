@@ -91,7 +91,9 @@ def export_patches_from_github(pr_number):
     local("mkdir -p %s" % patch_folder)
     logger.info('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
-    url = "https://api.github.com/repos/%s/pulls/%s/commits" % (repo, pr_number)
+    # Pagination documentation: https://developer.github.com/v3/#pagination
+    url = "https://api.github.com/repos/%s/pulls/%s/commits?per_page=100" \
+          % (repo, pr_number)
     r = requests.get(url, headers=headers)
     commits = json.loads(r.text)
     patch_headers = headers.copy()
