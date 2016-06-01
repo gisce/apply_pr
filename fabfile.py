@@ -54,13 +54,22 @@ def apply_remote_patches(name, from_patch=0):
             patches_to_apply = ' '.join(patches_to_apply)
             with cd("/home/erp/src/erp"):
                 result = sudo("git am %s" % patches_to_apply)
-                if result.failed:
-                    logger.error(
-                        'Applying patches for version %s failed' % name
-                    )
-                    with cd('/home/erp/src/erp'):
-                        sudo("git am --abort")
-                    abort('Aborting due some patch does not apply')
+                git_skip_or_abort(result)
+
+
+def git_skip_or_abort(result):
+    if result.failed:
+        logger.error(
+            'Applying patches failed.. Skipping or aborting...'
+        )
+        skip_or_abort = raw_input('skip or abort? ')
+        while skip_or_abort not in ('skip', 'abort'):
+            skip_or_abort = raw_input('skip or abort? ')
+        with cd('/home/erp/src/erp'):
+            result = sudo("git am --{0}".format(skip_or_abort))
+            git_skip_or_abort(result)
+        if skip_or_abort == 'abort':
+            abort('Aborting due some patch does not apply')
 
 
 @task
@@ -188,10 +197,11 @@ def apply_pr(pr_number, from_number=0, skip_upload=False):
     deploy_id = mark_to_deploy(pr_number)
     try:
         mark_deploy_status(deploy_id, 'pending')
-        export_patches_from_github(pr_number)
         if not skip_upload:
+            export_patches_from_github(pr_number)
             upload_patches(pr_number)
         apply_remote_patches(pr_number, from_number)
         mark_deploy_status(deploy_id, 'success')
-    except Exception, e:
+    except Exception as e:
+        logger.error(e)
         mark_deploy_status(deploy_id, 'error', description=e.message)
