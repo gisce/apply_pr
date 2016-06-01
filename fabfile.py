@@ -202,5 +202,6 @@ def apply_pr(pr_number, from_number=0, skip_upload=False):
             upload_patches(pr_number)
         apply_remote_patches(pr_number, from_number)
         mark_deploy_status(deploy_id, 'success')
-    except Exception, e:
+    except Exception as e:
+        logger.error(e)
         mark_deploy_status(deploy_id, 'error', description=e.message)
