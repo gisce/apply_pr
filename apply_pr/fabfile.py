@@ -4,6 +4,7 @@ import logging
 import os
 
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
+from fabric.operations import open_shell
 from osconf import config_from_environment
 from slugify import slugify
 import requests
@@ -60,10 +61,13 @@ def git_skip_or_abort(result):
         logger.error(
             'Applying patches failed.. Skipping or aborting...'
         )
-        skip_or_abort = raw_input('skip or abort? ')
-        while skip_or_abort not in ('skip', 'abort'):
+        skip_or_abort = raw_input('skip/abort/shell? ')
+        while skip_or_abort not in ('skip', 'abort', 'shell'):
             skip_or_abort = raw_input('skip or abort? ')
         with cd('/home/erp/src/erp'):
+            if skip_or_abort == 'shell':
+                open_shell()
+                return
             result = sudo("git am --{0}".format(skip_or_abort))
             git_skip_or_abort(result)
         if skip_or_abort == 'abort':
@@ -114,6 +118,11 @@ def export_patches_from_github(pr_number):
     patch_headers = headers.copy()
     patch_headers['Accept'] = 'application/vnd.github.patch'
     for idx, commit in enumerate(commits):
+        if commit['commit']['message'].lower().startswith('merge'):
+            logger.info('Skipping merge commit {sha}: {message}'.format(
+                sha=commit['sha'], message=commit['commit']['message']
+            ))
+            continue
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (idx + 1, message)
