@@ -9,8 +9,6 @@ from slugify import slugify
 import requests
 
 
-log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
-logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 
