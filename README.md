@@ -23,7 +23,7 @@ HOW TO: Apply pull requests
 
 3. Run the following command:
 
-    `$ apply_pr --pr {pull request number}`
+    `$ apply_pr --pr {pull request number} --host=ssh://user:password@host`
 
 6. Connect to client server with SSH
 7. Login as root
