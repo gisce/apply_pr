@@ -120,6 +120,11 @@ def export_patches_from_github(pr_number):
     patch_headers = headers.copy()
     patch_headers['Accept'] = 'application/vnd.github.patch'
     for idx, commit in enumerate(commits):
+        if commit['commit']['message'].lower().startswith('merge'):
+            logger.info('Skipping merge commit {sha}: {message}'.format(
+                sha=commit['sha'], message=commit['commit']['message']
+            ))
+            continue
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (idx + 1, message)
