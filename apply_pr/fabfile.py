@@ -8,7 +8,8 @@ from fabric.operations import open_shell
 from osconf import config_from_environment
 from slugify import slugify
 import requests
-
+import StringIO
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -212,3 +213,35 @@ def apply_pr(pr_number, from_number=0, skip_upload=False):
     except Exception as e:
         logger.error(e)
         mark_deploy_status(deploy_id, 'error', description=e.message)
+
+@task
+def check_pr(pr_number):
+    result = OrderedDict()
+    repo = github_config(repository='gisce/erp')['repository']
+    logger.info('Exporting patches from GitHub')
+    headers = {'Authorization': 'token %s' % github_config()['token']}
+    # Pagination documentation: https://developer.github.com/v3/#pagination
+    url = "https://api.github.com/repos/%s/pulls/%s/commits?per_page=100" \
+          % (repo, pr_number)
+    r = requests.get(url, headers=headers)
+    commits = json.loads(r.text)
+
+    with settings(warn_only=True, sudo_user='erp'):
+        with cd("/home/erp/src/erp"):
+            for commit in commits:
+                fh = StringIO.StringIO()
+
+                run('git log --grep="{0}" --oneline -n1'.format(commit['commit']['message']), stdout=fh, shell=False)
+                out = fh.getvalue()
+                if len(out) > 121:
+                    result[commit['commit']['message']] = True
+                else:
+                    result[commit['commit']['message']] = False
+    for index, commit in enumerate(result):
+        if result[commit]:
+            print('{0} - {1} : \xE2\x9C\x85 Aplicat'.format(str(index).zfill(4), commit.splitlines()[0]))
+        else:
+            print('{0} - {1} : \xE2\x9D\x8C No aplicat'.format(str(index).zfill(4), commit.splitlines()[0]))
+
+    return result
+
