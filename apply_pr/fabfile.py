@@ -221,8 +221,8 @@ def check_pr(pr_number):
     logger.info('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
     # Pagination documentation: https://developer.github.com/v3/#pagination
-    url = "https://api.github.com/repos/%s/pulls/%s/commits?per_page=100" \
-          % (repo, pr_number)
+    base_url = 'https://api.github.com/repos/{0}/pulls/{1}/commits?per_page=100'
+    url = base_url.format(repo, pr_number)
     r = requests.get(url, headers=headers)
     commits = json.loads(r.text)
 
@@ -230,18 +230,23 @@ def check_pr(pr_number):
         with cd("/home/erp/src/erp"):
             for commit in commits:
                 fh = StringIO.StringIO()
-
-                run('git log --grep="{0}" --oneline -n1'.format(commit['commit']['message']), stdout=fh, shell=False)
+                commit_message = commit['commit']['message']
+                git_command_template = 'git log --grep="{0}" --oneline -n1'
+                git_command = git_command_template.format(commit_message)
+                run(git_command, stdout=fh, shell=False)
                 out = fh.getvalue()
                 if len(out) > 121:
                     result[commit['commit']['message']] = True
                 else:
                     result[commit['commit']['message']] = False
     for index, commit in enumerate(result):
+        num_commit = str(index).zfill(4)
+        first_line = commit.splitlines()[0]
         if result[commit]:
-            print('{0} - {1} : \xE2\x9C\x85 Aplicat'.format(str(index).zfill(4), commit.splitlines()[0]))
+            message = '{0} - {1} : \xE2\x9C\x85 Aplicat'
         else:
-            print('{0} - {1} : \xE2\x9D\x8C No aplicat'.format(str(index).zfill(4), commit.splitlines()[0]))
+            message = '{0} - {1} : \xE2\x9D\x8C No aplicat'
+        print(message.format(num_commit, first_line))
 
     return result
 
