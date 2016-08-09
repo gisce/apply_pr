@@ -239,7 +239,7 @@ def check_pr(pr_number):
                     result[commit['commit']['message']] = True
                 else:
                     result[commit['commit']['message']] = False
-    for index, commit in enumerate(result):
+    for index, commit in enumerate(result, 1):
         num_commit = str(index).zfill(4)
         first_line = commit.splitlines()[0]
         if result[commit]:
