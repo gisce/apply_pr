@@ -230,12 +230,15 @@ def check_pr(pr_number):
         with cd("/home/erp/src/erp"):
             for commit in commits:
                 fh = StringIO.StringIO()
-                commit_message = commit['commit']['message']
-                git_command_template = 'git log --grep="{0}" --oneline -n1'
+                commit_message = (
+                    commit['commit']['message']
+                ).replace('"', '\\"')
+                git_command_template = 'git --no-pager log -F --grep="{0}" -n1'
                 git_command = git_command_template.format(commit_message)
-                run(git_command, stdout=fh, shell=False)
+                with settings(output_prefix=False):
+                    run(git_command, stdout=fh, shell=False)
                 out = fh.getvalue()
-                if len(out) > 121:
+                if len(out) > 0:
                     result[commit['commit']['message']] = True
                 else:
                     result[commit['commit']['message']] = False
