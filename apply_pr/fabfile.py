@@ -141,7 +141,7 @@ def mark_to_deploy(pr_number):
     }
     url = "https://api.github.com/repos/gisce/erp/pulls/%s/commits" % pr_number
     r = requests.get(url, headers=headers)
-    commit = json.loads(r.text)[0]['sha']
+    commit = json.loads(r.text)[-1]['sha']
     host = run("uname -n")
     payload = {
         'ref': commit, 'task': 'deploy', 'auto_merge': False,
