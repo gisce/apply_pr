@@ -1,0 +1,13 @@
+sudo: false
+language: python
+python:
+- '2.7'
+script: "pip install -e ."
+deploy:
+  provider: pypi
+  user: gisce
+  password:
+    secure: b2PaRlJEOefEJk3q0CFrejUpx1Dg/7SsNheTIyajCb/hbl7C5eMl9pnSMvnHa9KM08VOZW8EAjj8n2b1hAEtxYq0tEeuyojsmaAJqIZyBTpR5c+3atKavMZmaehfAyfHNVjJXIhp03u57zGApbkA+23SqtC0uy2whDybKlaeCp8=
+  on:
+    tags: true
+    repo: gisce/apply_pr
