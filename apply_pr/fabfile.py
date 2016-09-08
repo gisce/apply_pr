@@ -139,9 +139,10 @@ def mark_to_deploy(pr_number):
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
     }
-    url = "https://api.github.com/repos/gisce/erp/pulls/%s/commits" % pr_number
+    url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
     r = requests.get(url, headers=headers)
-    commit = json.loads(r.text)[0]['sha']
+    pull = json.loads(r.text)
+    commit = pull['head']['sha']
     host = run("uname -n")
     payload = {
         'ref': commit, 'task': 'deploy', 'auto_merge': False,
