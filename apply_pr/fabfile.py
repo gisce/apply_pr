@@ -165,6 +165,28 @@ def mark_to_deploy(pr_number):
 
 
 @task
+def get_deploys(pr_number):
+    headers = {
+        'Accept': 'application/vnd.github.cannonball-preview+json',
+        'Authorization': 'token %s' % github_config()['token']
+    }
+    url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+    r = requests.get(url, headers=headers)
+    pull = json.loads(r.text)
+    commit = pull['head']['sha']
+    url = "https://api.github.com/repos/gisce/erp/deployments?ref={}".format(commit)
+    r = requests.get(url, headers=headers)
+    res = json.loads(r.text)
+    for deployment in res:
+        print("Deployment id: {id} to {description}".format(**deployment))
+        statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
+        for status in reversed(statusses):
+            print("  - {state} by {creator[login]} on {created_at}".format(
+                **status
+            ))
+
+
+@task
 def mark_deploy_status(deploy_id, state='success', description=None):
     if not deploy_id:
         return
