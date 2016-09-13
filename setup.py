@@ -14,6 +14,7 @@ setup(
         [console_scripts]
         apply_pr=apply_pr.cli:apply_pr
         check_pr=apply_pr.cli:check_pr
+        status_pr=apply_pr.cli:status_pr
     ''',
     install_requires=[
         'fabric',

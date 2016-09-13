@@ -1,4 +1,6 @@
-from __future__ import with_statement
+from __future__ import (
+    with_statement, absolute_import, unicode_literals, print_function
+)
 import json
 import logging
 import os
@@ -253,4 +255,3 @@ def check_pr(pr_number):
         print(message.format(num_commit, first_line))
 
     return result
-
