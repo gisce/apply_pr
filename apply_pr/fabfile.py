@@ -2,6 +2,7 @@ from __future__ import with_statement
 import json
 import logging
 import os
+import pprint
 
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
 from fabric.operations import open_shell
@@ -254,3 +255,17 @@ def check_pr(pr_number):
 
     return result
 
+
+@task
+def readme(milestone):
+    logger.info('Marking as deployed on GitHub')
+    headers = {
+        'Accept': 'application/vnd.github.cannonball-preview+json',
+        'Authorization': 'token %s' % github_config()['token']
+    }
+    url = "https://api.github.com/search/issues?q=milestone:"+milestone+"&type=pr&sort=created&order=asc&per_page=250"
+    r = requests.get(url, headers=headers)
+    pull = json.loads(r.text)
+    desc = [(x['title'], x['number']) for x in pull['items']]
+    pprint.pprint(desc)
+    return True
