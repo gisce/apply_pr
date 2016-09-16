@@ -41,6 +41,19 @@ def check_pr(pr, host):
     check_pr_task = WrappedCallableTask(fabfile.check_pr)
     execute(check_pr_task, pr, host=url.hostname)
 
+@click.command(name='status_pr')
+@click.option('--deploy-id', help='Deploy id to mark')
+@click.option('--status', help='Status to set.', default='success',
+              type=click.Choice(['success', 'error', 'failure']))
+def status_pr(deploy_id, status):
+    from apply_pr import fabfile
+
+    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
+    logging.basicConfig(level=log_level)
+
+    mark_deploy_status = WrappedCallableTask(fabfile.mark_deploy_status)
+    execute(mark_deploy_status, deploy_id, status)
+
 
 @click.command(name='check_prs_status')
 @click.option('--prs', help='List of pull request separated by space(by default)', required=True)
