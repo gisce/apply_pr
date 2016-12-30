@@ -11,6 +11,7 @@ from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
 from fabric.state import output
+from fabric import colors
 from osconf import config_from_environment
 from slugify import slugify
 import requests
@@ -122,14 +123,14 @@ class GitApplier(object):
     def catch_result(self, result):
         for line in result.split('\n'):
             if re.match('Applying: ', line):
-                tqdm.write(line)
+                tqdm.write(colors.green(line))
                 self.pbar.update()
                 import time
                 time.sleep(0.1)
         if result.failed:
             patch = PatchFile.from_patch_number(result, self.patches)
             if patch:
-                tqdm.write('Wingled!')
+                tqdm.write(colors.red("Wiggled! \U0001F635"))
                 try:
                     patch.wiggle()
                 except WiggleException:
@@ -371,18 +372,25 @@ def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False):
     deploy_id = mark_to_deploy(pr_number)
     try:
         mark_deploy_status(deploy_id, 'pending')
+        tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
+            deploy_id
+        )))
         if not skip_upload:
+            pass
             export_patches_from_github(pr_number, from_commit)
             upload_patches(pr_number, from_commit)
         if from_commit:
             from_ = from_commit
         else:
             from_ = from_number
+        tqdm.write(colors.yellow("Applying patches \U0001F648"))
         apply_remote_patches(pr_number, from_)
         mark_deploy_status(deploy_id, 'success')
+        tqdm.write(colors.green("Deploy success \U0001F680"))
     except Exception as e:
         logger.error(e)
         mark_deploy_status(deploy_id, 'error', description=e.message)
+        tqdm.write(colors.red("Deploy failure \U0001F680"))
 
 
 @task
