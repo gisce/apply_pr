@@ -205,24 +205,6 @@ class PatchFile(object):
             sudo("git add {}".format(file_in_patch))
 
 
-def git_resolved_or_abort(result):
-    if result.failed:
-        logger.error(
-            'Applying patches failed.. Resolving or aborting...'
-        )
-        resolved_or_abort = raw_input('resolved/abort/shell? ')
-        while resolved_or_abort not in ('resolved', 'abort', 'shell'):
-            resolved_or_abort = raw_input('resolved or abort? ')
-        with cd('/home/erp/src/erp'):
-            if resolved_or_abort == 'shell':
-                open_shell()
-                return
-            result = sudo("git am --{0}".format(resolved_or_abort))
-            git_resolved_or_abort(result)
-        if resolved_or_abort == 'abort':
-            abort('Aborting due some patch does not apply')
-
-
 @task
 def find_from_to_commits(pr_number):
     headers = {'Authorization': 'token %s' % github_config()['token']}
