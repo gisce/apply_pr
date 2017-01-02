@@ -379,6 +379,10 @@ def check_is_rolling():
 def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False):
     check_is_rolling()
     deploy_id = mark_to_deploy(pr_number)
+    if not deploy_id:
+        tqdm.write(colors.magenta(
+            'No deploy id! you must mark the pr manually'
+        ))
     try:
         mark_deploy_status(deploy_id, 'pending')
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
