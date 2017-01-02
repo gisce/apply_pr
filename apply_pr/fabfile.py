@@ -202,7 +202,13 @@ class PatchFile(object):
                 if result.failed:
                     raise WiggleException
                 sudo("rm -f {} {}".format(rej_file, porig_file))
-            sudo("git add {}".format(file_in_patch))
+            removed = sudo("git status --porcelain {} | grep '^ D'".format(
+                file_in_patch
+            )).strip()
+            if removed:
+                sudo("git rm -f {}".format(file_in_patch))
+            else:
+                sudo("git add -f {}".format(file_in_patch))
 
     def add(self):
         for file_in_patch in self.files:
