@@ -163,10 +163,13 @@ class PatchFile(object):
 
     @property
     def files(self):
-        return [
-            x.strip() for x in sudo(
-                "diffstat -l -p1 {}".format(self.patch_file)).split('\n')
-        ]
+        files_in_patch = []
+        command = " grep '^diff' {}".format(self.patch_file)
+        for line in sudo(command).split('\n'):
+            files_in_patch.append(
+                os.path.relpath(line.split(' ')[2], 'a')
+            )
+        return files_in_patch
 
     @classmethod
     def from_patch_number(cls, result, patches_to_apply):
