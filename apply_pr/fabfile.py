@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import io
+import re
 import pprint
 
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
@@ -470,6 +471,6 @@ def prs_status(prs, separator=' '):
             PRS[milestone] += [message]
         except Exception as e:
             logger.error('Error PR {0}'.format(pr_number))
-            print 'Error PR {0}'.format(pr_number)
+            print('Error PR {0}'.format(pr_number))
     pprint.pprint(PRS)
     return True
