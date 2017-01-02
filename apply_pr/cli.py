@@ -6,23 +6,32 @@ from fabric.tasks import execute, WrappedCallableTask
 from fabric.api import env
 import click
 
+DEFAULT_LOG_LEVEL = 'ERROR'
+
+
+def configure_logging():
+    log_level = getattr(logging, os.environ.get(
+        'LOG_LEVEL', DEFAULT_LOG_LEVEL).upper()
+    )
+    logging.basicConfig(level=log_level)
+
 
 @click.command(name="apply_pr")
 @click.option("--pr", help="Pull request to apply", required=True)
 @click.option("--host", help="Host to apply", required=True)
-@click.option("--from-number", help="With commit number", default=0)
-def apply_pr(pr, host, from_number):
+@click.option("--from-number", help="From commit number", default=0)
+@click.option("--from-commit", help="From commit hash", default=None)
+def apply_pr(pr, host, from_number, from_commit):
     from apply_pr import fabfile
 
     url = urlparse(host)
     env.user = url.username
     env.password = url.password
 
-    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
-    logging.basicConfig(level=log_level)
+    configure_logging()
 
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    execute(apply_pr_task, pr, from_number, host=url.hostname)
+    execute(apply_pr_task, pr, from_number, from_commit, host=url.hostname)
 
 
 @click.command(name='check_pr')
@@ -35,11 +44,11 @@ def check_pr(pr, host):
     env.user = url.username
     env.password = url.password
 
-    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
-    logging.basicConfig(level=log_level)
+    configure_logging()
 
     check_pr_task = WrappedCallableTask(fabfile.check_pr)
     execute(check_pr_task, pr, host=url.hostname)
+
 
 @click.command(name='status_pr')
 @click.option('--deploy-id', help='Deploy id to mark')
@@ -48,8 +57,7 @@ def check_pr(pr, host):
 def status_pr(deploy_id, status):
     from apply_pr import fabfile
 
-    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
-    logging.basicConfig(level=log_level)
+    configure_logging()
 
     mark_deploy_status = WrappedCallableTask(fabfile.mark_deploy_status)
     execute(mark_deploy_status, deploy_id, status)

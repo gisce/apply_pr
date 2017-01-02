@@ -22,6 +22,7 @@ setup(
         'osconf',
         'python-slugify',
         'requests',
-        'click'
+        'click',
+        'tqdm'
     ]
 )
