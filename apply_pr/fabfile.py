@@ -4,6 +4,8 @@ from __future__ import (
 import json
 import logging
 import os
+import re
+import pprint
 
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
 from fabric.operations import open_shell
@@ -277,3 +279,32 @@ def check_pr(pr_number):
         print(message.format(num_commit, first_line))
 
     return result
+
+@task
+def prs_status(prs, separator=' '):
+    logger.info('Marking as deployed on GitHub')
+    headers = {
+        'Accept': 'application/vnd.github.cannonball-preview+json',
+        'Authorization': 'token %s' % github_config()['token']
+    }
+    prs = re.sub('{}+'.format(separator), separator, prs)
+    pr_list = prs.split(separator)
+    PRS = {}
+    for pr_number in pr_list:
+        try:
+            url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+            r = requests.get(url, headers=headers)
+            pull = json.loads(r.text)
+            state_pr = pull['state']
+            merged_at = pull['merged_at']
+            milestone = pull['milestone']['title']
+            message = 'PR {number}=> state {state_pr} merged_at {merged_at} milestone {milestone}'.format(
+                number=pr_number, state_pr=state_pr, merged_at=merged_at, milestone=milestone
+            )
+            PRS.setdefault(milestone, [])
+            PRS[milestone] += [message]
+        except Exception as e:
+            logger.error('Error PR {0}'.format(pr_number))
+            print 'Error PR {0}'.format(pr_number)
+    pprint.pprint(PRS)
+    return True
