@@ -72,7 +72,7 @@ def upload_patches(pr_number, from_commit=None):
 @task
 def apply_remote_patches(name, from_patch=0):
     from_commit = None
-    if len(from_patch) == 40:
+    if isinstance(from_patch, basestring) and len(from_patch) == 40:
         from_commit = from_patch
         logger.info('Applying from commit {}'.format(from_commit))
         from_patch = 0
