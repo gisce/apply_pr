@@ -274,6 +274,7 @@ def export_patches_from_github(pr_number, from_commit=None):
                 logger.info('Skipping commit {sha}: {message}'.format(
                     sha=commit['sha'], message=commit['commit']['message']
                 ))
+                patch_number += 1
                 continue
             else:
                 from_commit = None
