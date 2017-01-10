@@ -374,7 +374,9 @@ def check_is_rolling():
         with cd("/home/erp/src/erp"):
             res = sudo("git branch | grep '* rolling'")
             if res.return_code:
-                abort("The repository is not in rolling mode")
+                message = "The repository is not in rolling mode"
+                tqdm.write(colors.red(message))
+                abort(message)
 
 
 @task
