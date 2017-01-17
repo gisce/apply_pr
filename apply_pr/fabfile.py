@@ -479,7 +479,14 @@ def prs_status(prs, separator=' '):
     return True
 
 @task
-def readme(milestone):
+def auto_changelog(milestone, show_issues=False):
+
+    def print_item(item):
+        message = '* {title} [#{number}]({url}) \n'.format(
+            title=item['title'], number=item['number'], url=item['url']
+            )
+        return (message)
+
     logger.info('Marking as deployed on GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
@@ -488,6 +495,29 @@ def readme(milestone):
     url = "https://api.github.com/search/issues?q=milestone:"+milestone+"&type=pr&sort=created&order=asc&per_page=250"
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
-    desc = [(x['title'], x['number']) for x in pull['items']]
-    pprint.pprint(desc)
+    isses_desc = []
+    pulls_desc = []
+    other_desc = []
+    for item in pull['items']:
+        url_item = item['html_url']
+        item_info = {'title': item['title'], 'number': item['number'], 'url': url_item}
+        if 'issues' in url_item:
+            isses_desc.append(item_info)
+        elif 'pull' in url_item:
+            pulls_desc.append(item_info)
+        else:
+            other_desc.append(item_info)
+    desc = ''
+    if show_issues:
+        desc = '# Issues:  \n'
+        for issue in isses_desc:
+            desc += print_item(issue)
+    desc += '\n # Pull Requests:  \n'
+    for pull in pulls_desc:
+        desc += print_item(pull)
+    if other_desc:
+        desc += '# Others :  \n'
+        for pull in other_desc:
+            desc += print_item(pull)
+    print (desc)
     return True
