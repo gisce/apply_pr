@@ -500,7 +500,7 @@ def auto_changelog(milestone, show_issues=True):
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
     }
-    url = "https://api.github.com/search/issues?q=milestone:"+milestone+"&type=pr&sort=created&order=asc&per_page=250"
+    url = "https://api.github.com/search/issues?q=milestone:"+milestone+"+is:pr&sort=updated&order=asc&per_page=250"
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
     isses_desc = []
