@@ -411,6 +411,11 @@ def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False):
 
 
 @task
+def mark_deployed(pr_number):
+    deploy_id = mark_to_deploy(pr_number)
+    mark_deploy_status(deploy_id, 'success')
+
+@task
 def check_pr(pr_number):
     result = OrderedDict()
     repo = github_config(repository='gisce/erp')['repository']
