@@ -118,7 +118,10 @@ class GitApplier(object):
         self.forced = 0
 
     def run(self):
-        result = sudo("git am %s" % ' '.join(self.patches), combine_stderr=True)
+        result = sudo(
+            "git am %s" % ' '.join(self.patches),
+            combine_stderr=True, user='erp'
+        )
         self.catch_result(result)
 
     def catch_result(self, result):
@@ -133,7 +136,7 @@ class GitApplier(object):
             if patch:
                 tqdm.write(colors.red("Wiggled! \U0001F635"))
                 try:
-                    patch.wiggle()
+                    raise WiggleException
                 except WiggleException:
                     prompt("Manual resolve...")
                 finally:
