@@ -303,8 +303,12 @@ def mark_to_deploy(pr_number):
     commit = pull['head']['sha']
     host = run("uname -n")
     payload = {
-        'ref': commit, 'task': 'deploy', 'auto_merge': False,
-        'environment': host, 'description': host,
+        'ref': commit,
+        'task': 'deploy',
+        'auto_merge': False,
+        'environment': host,
+        'description': host,
+        'required_contexts': [],
         'payload': {
             'host': host
         }
