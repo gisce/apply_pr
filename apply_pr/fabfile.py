@@ -120,7 +120,7 @@ class GitApplier(object):
     def run(self):
         result = sudo(
             "git am %s" % ' '.join(self.patches),
-            combine_stderr=True, user='erp'
+            combine_stderr=True
         )
         self.catch_result(result)
 
@@ -132,23 +132,18 @@ class GitApplier(object):
                 import time
                 time.sleep(0.1)
         if result.failed:
-            patch = PatchFile.from_patch_number(result, self.patches)
-            if patch:
-                tqdm.write(colors.red("Wiggled! \U0001F635"))
-                try:
-                    raise WiggleException
-                except WiggleException:
-                    prompt("Manual resolve...")
-                finally:
-                    to_commit = sudo(
-                        "git diff --cached --name-only --no-color", pty=False
-                    )
-                    if to_commit:
-                        self.resolve()
-                    else:
-                        self.skip()
-            else:
-                self.abort()
+            try:
+                raise WiggleException
+            except WiggleException:
+                prompt("Manual resolve...")
+            finally:
+                to_commit = sudo(
+                    "git diff --cached --name-only --no-color", pty=False
+                )
+                if to_commit:
+                    self.resolve()
+                else:
+                    self.skip()
 
     def skip(self):
         self.catch_result(sudo("git am --skip"))
