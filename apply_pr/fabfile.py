@@ -12,6 +12,7 @@ from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
 from fabric.state import output
+from fabric.exceptions import NetworkError
 from fabric import colors
 from osconf import config_from_environment
 from slugify import slugify
@@ -383,7 +384,12 @@ def check_is_rolling():
 
 @task
 def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False):
-    check_is_rolling()
+    try:
+        check_is_rolling()
+    except NetworkError as e:
+        logger.error('Error connecting to specified host')
+        logger.error(e)
+        raise
     deploy_id = mark_to_deploy(pr_number)
     if not deploy_id:
         tqdm.write(colors.magenta(
