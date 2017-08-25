@@ -22,6 +22,9 @@ def configure_logging():
 @click.option("--from-number", help="From commit number", default=0)
 @click.option("--from-commit", help="From commit hash", default=None)
 def apply_pr(pr, host, from_number, from_commit):
+    from apply_pr.version import check_version
+    check_version()
+
     from apply_pr import fabfile
 
     url = urlparse(host)
