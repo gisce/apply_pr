@@ -9,7 +9,7 @@ def check_version():
     import apply_pr
     running_version = apply_pr.__version__
     last_version = latest_version()
-    if parse_version(running_version) < latest_version():
+    if parse_version(running_version) < parse_version(latest_version()):
         raise SystemExit('Your version {} is outdated. Upgrade to {}'.format(
             running_version, last_version
         ))
