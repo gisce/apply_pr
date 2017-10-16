@@ -30,7 +30,8 @@ HOW TO: Apply pull requests
 8. Restart the server running the following commands:
 
     ```sh
-    $ supervisor ctl
+    $ sudo supervisorctl
     $ status (now we can see the names of the servers to be restarted)
     $ restart {server name 1} {server name 2} ...
     ```
+9. ```$ tail -f {server name}``` Check server status after restart
