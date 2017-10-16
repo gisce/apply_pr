@@ -20,7 +20,7 @@ def configure_logging():
 @click.option("--pr", help="Pull request to apply", required=True)
 @click.option("--host", help="Host to apply", required=True)
 @click.option("--from-number", help="From commit number", default=0)
-@click.option("--from-commit", help="From commit hash", default=None)
+@click.option("--from-commit", help="From commit hash (included)", default=None)
 def apply_pr(pr, host, from_number, from_commit):
     from apply_pr.version import check_version
     check_version()
