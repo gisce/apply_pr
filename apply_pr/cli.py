@@ -21,7 +21,8 @@ def configure_logging():
 @click.option("--host", help="Host to apply", required=True)
 @click.option("--from-number", help="From commit number", default=0)
 @click.option("--from-commit", help="From commit hash (included)", default=None)
-def apply_pr(pr, host, from_number, from_commit):
+@click.option("--force-hostname", help="Force hostname", default=False)
+def apply_pr(pr, host, from_number, from_commit, force_hostname):
     from apply_pr.version import check_version
     check_version()
 
@@ -34,7 +35,7 @@ def apply_pr(pr, host, from_number, from_commit):
     configure_logging()
 
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    execute(apply_pr_task, pr, from_number, from_commit, host=url.hostname)
+    execute(apply_pr_task, pr, from_number, from_commit, host=url.hostname, hostname=force_hostname)
 
 
 @click.command(name='check_pr')
