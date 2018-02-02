@@ -287,7 +287,7 @@ def export_patches_from_github(pr_number, from_commit=None):
 
 
 @task
-def mark_to_deploy(pr_number):
+def mark_to_deploy(pr_number, hostname=False):
     logger.info('Marking as deployed on GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
@@ -297,7 +297,10 @@ def mark_to_deploy(pr_number):
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
     commit = pull['head']['sha']
-    host = run("uname -n")
+    if not hostname:
+       host = run("uname -n")
+    else:
+       host = hostname
     payload = {
         'ref': commit,
         'task': 'deploy',
@@ -383,14 +386,14 @@ def check_is_rolling():
 
 
 @task
-def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False):
+def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False, hostname=False):
     try:
         check_is_rolling()
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
         raise
-    deploy_id = mark_to_deploy(pr_number)
+    deploy_id = mark_to_deploy(pr_number, hostname=hostname)
     if not deploy_id:
         tqdm.write(colors.magenta(
             'No deploy id! you must mark the pr manually'
