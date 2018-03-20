@@ -45,7 +45,7 @@ if config.get('logging'):
 
 @task
 def upload_patches(
-    pr_number, from_commit=None, src='/home/erp/src/', repository='erp'
+    pr_number, from_commit=None, src='/home/erp/src', repository='erp'
 ):
     temp_dir = '/tmp/%s' % pr_number
     remote_dir = '{}/{}/patches/{}'.format(
@@ -77,7 +77,7 @@ def upload_patches(
 
 @task
 def apply_remote_patches(
-    name, from_patch=0, src='/home/erp/src/', repository='erp'
+    name, from_patch=0, src='/home/erp/src', repository='erp'
 ):
     from_commit = None
     if isinstance(from_patch, basestring) and len(from_patch) == 40:
