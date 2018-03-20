@@ -20,11 +20,16 @@ def configure_logging():
 @click.option("--pr", help="Pull request to apply", required=True)
 @click.option("--host", help="Host to apply", required=True)
 @click.option("--from-number", help="From commit number", default=0)
-@click.option("--from-commit", help="From commit hash (included)", default=None)
-@click.option("--force-hostname", help="Force hostname", default=False)
-@click.option("--company", default='gisce', help='GitHub company name')
-@click.option("--repo", default='erp', help='GitHub repository name')
-@click.option("--src", default='/home/erp/src', help='GitHub repository name')
+@click.option("--from-commit", help="From commit hash (included)",
+              default=None, show_default=True)
+@click.option("--force-hostname", help="Force hostname",
+              default=False, show_default=True)
+@click.option('--company', help='GitHub company name',
+              default='gisce', show_default=True)
+@click.option('--repo', help='GitHub repository name',
+              default='erp', show_default=True)
+@click.option('--src', help='Remote src path',
+              default='/home/erp/src', show_default=True)
 def apply_pr(
         pr, host, from_number, from_commit, force_hostname, company, repo, src
 ):
@@ -50,9 +55,12 @@ def apply_pr(
 @click.command(name='check_pr')
 @click.option('--pr', help='Pull request to check', required=True)
 @click.option('--host', help='Host to check', required=True)
-@click.option("--src", default='/home/erp/src', help='GitHub repository name')
-@click.option("--company", default='gisce', help='GitHub company name')
-@click.option("--repo", default='erp', help='GitHub repository name')
+@click.option('--company', help='GitHub company name',
+              default='gisce', show_default=True)
+@click.option('--repo', help='GitHub repository name',
+              default='erp', show_default=True)
+@click.option('--src', help='Remote src path',
+              default='/home/erp/src', show_default=True)
 def check_pr(pr, src, company, repo, host):
     from apply_pr import fabfile
 
@@ -69,10 +77,12 @@ def check_pr(pr, src, company, repo, host):
 
 @click.command(name='status_pr')
 @click.option('--deploy-id', help='Deploy id to mark')
-@click.option('--status', help='Status to set.', default='success',
-              type=click.Choice(['success', 'error', 'failure']))
-@click.option("--company", default='gisce', help='GitHub company name')
-@click.option("--repo", default='erp', help='GitHub repository name')
+@click.option('--status', type=click.Choice(['success', 'error', 'failure']),
+              help='Status to set', default='success', show_default=True)
+@click.option('--company', help='GitHub company name',
+              default='gisce', show_default=True)
+@click.option('--repo', help='GitHub repository name',
+              default='erp', show_default=True)
 def status_pr(deploy_id, status, company, repo):
     from apply_pr import fabfile
 
@@ -84,10 +94,13 @@ def status_pr(deploy_id, status, company, repo):
 
 
 @click.command(name='check_prs_status')
-@click.option('--prs', help='List of pull request separated by space(by default)', required=True)
-@click.option('--separator', help='Character separator of list by default is space', default=' ', required=True)
-@click.option("--company", default='gisce', help='GitHub company name')
-@click.option("--repo", default='erp', help='GitHub repository name')
+@click.option('--prs', help='List of pull request separated by space (by default)', required=True)
+@click.option('--separator', help='Character separator of list by default is space',
+              default=' ', required=True, show_default=True)
+@click.option('--company', help='GitHub company name',
+              default='gisce', show_default=True)
+@click.option('--repo', help='GitHub repository name',
+              default='erp', show_default=True)
 def check_prs_status(prs, separator, company, repo):
     from apply_pr import fabfile
 
