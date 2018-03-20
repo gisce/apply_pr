@@ -314,9 +314,9 @@ def mark_to_deploy(
     pull = json.loads(r.text)
     commit = pull['head']['sha']
     if not hostname:
-       host = run("uname -n")
+        host = run("uname -n")
     else:
-       host = hostname
+        host = hostname
     payload = {
         'ref': commit,
         'task': 'deploy',
@@ -333,7 +333,7 @@ def mark_to_deploy(
     )
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     res = json.loads(r.text)
-    if not 'id' in res:
+    if 'id' not in res:
         logger.info('Not marking deployment in github: %s' % res['message'])
         return 0
     deploy_id = res['id']
