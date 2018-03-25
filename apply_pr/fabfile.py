@@ -408,6 +408,16 @@ def export_patches_pr(pr_number, owner='gisce', repository='erp'):
 
 
 @task
+def check_it_exists(src='/home/erp/src', repository='erp'):
+    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+        res = sudo("ls {}/{}".format(src, repository))
+        if res.return_code:
+            message = "The repository does not exist or cannot be found"
+            tqdm.write(colors.red(message))
+            abort(message)
+
+
+@task
 def check_is_rolling(src='/home/erp/src', repository='erp'):
     with settings(hide('everything'), sudo_user='erp', warn_only=True):
         with cd("{}/{}".format(src, repository)):
@@ -424,6 +434,7 @@ def apply_pr(
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
 ):
     try:
+        check_it_exists(src=src, repository=repository)
         check_is_rolling(src=src, repository=repository)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
