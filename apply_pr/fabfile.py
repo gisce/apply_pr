@@ -44,9 +44,13 @@ if config.get('logging'):
 
 
 @task
-def upload_patches(pr_number, from_commit=None):
+def upload_patches(
+    pr_number, from_commit=None, src='/home/erp/src', repository='erp'
+):
     temp_dir = '/tmp/%s' % pr_number
-    remote_dir = '/home/erp/src/erp/patches/{}'.format(pr_number)
+    remote_dir = '{}/{}/patches/{}'.format(
+        src, repository, pr_number
+    )
     sudo("mkdir -p %s" % remote_dir)
     sudo("mkdir -p %s" % temp_dir)
     patches = [p for p in local(
@@ -72,7 +76,9 @@ def upload_patches(pr_number, from_commit=None):
 
 
 @task
-def apply_remote_patches(name, from_patch=0):
+def apply_remote_patches(
+    name, from_patch=0, src='/home/erp/src', repository='erp'
+):
     from_commit = None
     if isinstance(from_patch, basestring) and len(from_patch) == 40:
         from_commit = from_patch
@@ -83,8 +89,9 @@ def apply_remote_patches(name, from_patch=0):
         logger.info('Applying from number {}'.format(from_patch))
     with settings(warn_only=True, sudo_user='erp'):
         with hide('output'):
-            patches = sudo("ls -1 /home/erp/src/erp/patches/%s/*.patch" % name)
-
+            patches = sudo("ls -1 {}/{}/patches/{}/*.patch".format(
+                src, repository, name
+            ))
         patches_to_apply = []
         for patch in patches.split():
             if from_patch:
@@ -102,7 +109,7 @@ def apply_remote_patches(name, from_patch=0):
             patches_to_apply.append(patch)
 
         if patches_to_apply:
-            with cd("/home/erp/src/erp"):
+            with cd("{}/{}".format(src, repository)):
                 git_am = GitApplier(patches_to_apply)
                 git_am.run()
 
@@ -216,9 +223,11 @@ class PatchFile(object):
 
 
 @task
-def find_from_to_commits(pr_number):
+def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
     headers = {'Authorization': 'token %s' % github_config()['token']}
-    url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+    url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
+        owner, repository, pr_number
+    )
     r = requests.get(url, headers=headers)
     if r.status_code != 200:
         abort("Unable to get info from the pull request")
@@ -245,8 +254,11 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
 
 
 @task
-def export_patches_from_github(pr_number, from_commit=None):
-    repo = github_config(repository='gisce/erp')['repository']
+def export_patches_from_github(
+    pr_number, from_commit=None, owner='gisce', repository='erp'
+):
+    repo = github_config(
+        repository='{}/{}'.format(owner, repository))['repository']
     patch_folder = "deploy/patches/%s" % pr_number
     local("mkdir -p %s" % patch_folder)
     logger.info('Exporting patches from GitHub')
@@ -287,20 +299,24 @@ def export_patches_from_github(pr_number, from_commit=None):
 
 
 @task
-def mark_to_deploy(pr_number, hostname=False):
+def mark_to_deploy(
+    pr_number, hostname=False, owner='gisce', repository='erp'
+):
     logger.info('Marking as deployed on GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
     }
-    url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+    url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
+        owner, repository, pr_number
+    )
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
     commit = pull['head']['sha']
     if not hostname:
-       host = run("uname -n")
+        host = run("uname -n")
     else:
-       host = hostname
+        host = hostname
     payload = {
         'ref': commit,
         'task': 'deploy',
@@ -312,10 +328,12 @@ def mark_to_deploy(pr_number, hostname=False):
             'host': host
         }
     }
-    url = "https://api.github.com/repos/gisce/erp/deployments"
+    url = "https://api.github.com/repos/{}/{}/deployments".format(
+        owner, repository
+    )
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     res = json.loads(r.text)
-    if not 'id' in res:
+    if 'id' not in res:
         logger.info('Not marking deployment in github: %s' % res['message'])
         return 0
     deploy_id = res['id']
@@ -324,16 +342,20 @@ def mark_to_deploy(pr_number, hostname=False):
 
 
 @task
-def get_deploys(pr_number):
+def get_deploys(pr_number, owner='gisce', repository='erp'):
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
     }
-    url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+    url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
+        owner, repository, pr_number
+    )
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
     commit = pull['head']['sha']
-    url = "https://api.github.com/repos/gisce/erp/deployments?ref={}".format(commit)
+    url = "https://api.github.com/repos/{}/{}/deployments?ref={}".format(
+        owner, repository, commit
+    )
     r = requests.get(url, headers=headers)
     res = json.loads(r.text)
     for deployment in res:
@@ -346,7 +368,10 @@ def get_deploys(pr_number):
 
 
 @task
-def mark_deploy_status(deploy_id, state='success', description=None):
+def mark_deploy_status(
+    deploy_id, state='success', description=None,
+    owner='gisce', repository='erp'
+):
     if not deploy_id:
         return
     logger.info('Marking as deployed %s on GitHub' % state)
@@ -355,29 +380,47 @@ def mark_deploy_status(deploy_id, state='success', description=None):
         'Authorization': 'token %s' % github_config()['token']
     }
 
-    url = "https://api.github.com/repos/gisce/erp/deployments/%s/statuses"
+    url = "https://api.github.com/repos/{}/{}/deployments/{}/statuses".format(
+        owner, repository, deploy_id
+    )
     payload = {'state': state}
     if description is not None:
         payload['description'] = description
-    r = requests.post(url % deploy_id, data=json.dumps(payload),
-                      headers=headers)
+    r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
 
 
 @task
-def export_patches_pr(pr_number):
+def export_patches_pr(pr_number, owner='gisce', repository='erp'):
     local("mkdir -p deploy/patches/%s" % pr_number)
-    from_commit, to_commit, branch = find_from_to_commits(pr_number)
+    from_commit, to_commit, branch = find_from_to_commits(
+        pr_number, owner=owner, repository=repository
+    )
     if branch is None:
-        export_patches_from_github(pr_number)
+        export_patches_from_github(
+            pr_number, owner=owner, repository=repository
+        )
     else:
-        export_patches_from_git(from_commit, to_commit, pr_number)
+        export_patches_from_git(
+            from_commit, to_commit, pr_number,
+            owner=owner, repository=repository
+        )
 
 
 @task
-def check_is_rolling():
+def check_it_exists(src='/home/erp/src', repository='erp'):
     with settings(hide('everything'), sudo_user='erp', warn_only=True):
-        with cd("/home/erp/src/erp"):
+        res = sudo("ls {}/{}".format(src, repository))
+        if res.return_code:
+            message = "The repository does not exist or cannot be found"
+            tqdm.write(colors.red(message))
+            abort(message)
+
+
+@task
+def check_is_rolling(src='/home/erp/src', repository='erp'):
+    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+        with cd("{}/{}".format(src, repository)):
             res = sudo("git branch | grep '* rolling'")
             if res.return_code:
                 message = "The repository is not in rolling mode"
@@ -386,50 +429,83 @@ def check_is_rolling():
 
 
 @task
-def apply_pr(pr_number, from_number=0, from_commit=None, skip_upload=False, hostname=False):
+def apply_pr(
+        pr_number, from_number=0, from_commit=None, skip_upload=False,
+        hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
+):
     try:
-        check_is_rolling()
+        check_it_exists(src=src, repository=repository)
+        check_is_rolling(src=src, repository=repository)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
         raise
-    deploy_id = mark_to_deploy(pr_number, hostname=hostname)
+    deploy_id = mark_to_deploy(pr_number,
+                               hostname=hostname,
+                               owner=owner,
+                               repository=repository)
     if not deploy_id:
         tqdm.write(colors.magenta(
             'No deploy id! you must mark the pr manually'
         ))
     try:
-        mark_deploy_status(deploy_id, 'pending')
+        mark_deploy_status(deploy_id,
+                           state='pending',
+                           owner=owner,
+                           repository=repository)
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
         if not skip_upload:
             pass
-            export_patches_from_github(pr_number, from_commit)
-            upload_patches(pr_number, from_commit)
+            export_patches_from_github(pr_number,
+                                       from_commit,
+                                       owner=owner,
+                                       repository=repository)
+            upload_patches(pr_number,
+                           from_commit,
+                           src=src,
+                           repository=repository)
         if from_commit:
             from_ = from_commit
         else:
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
-        apply_remote_patches(pr_number, from_)
-        mark_deploy_status(deploy_id, 'success')
+        apply_remote_patches(pr_number,
+                             from_,
+                             src=src,
+                             repository=repository)
+        mark_deploy_status(deploy_id,
+                           state='success',
+                           owner=owner,
+                           repository=repository)
         tqdm.write(colors.green("Deploy success \U0001F680"))
     except Exception as e:
         logger.error(e)
-        mark_deploy_status(deploy_id, 'error', description=e.message)
+        mark_deploy_status(deploy_id,
+                           state='error',
+                           description=e.message,
+                           owner=owner,
+                           repository=repository)
         tqdm.write(colors.red("Deploy failure \U0001F680"))
 
 
 @task
-def mark_deployed(pr_number):
-    deploy_id = mark_to_deploy(pr_number)
-    mark_deploy_status(deploy_id, 'success')
+def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
+    deploy_id = mark_to_deploy(pr_number,
+                               hostname=hostname,
+                               owner=owner,
+                               repository=repository)
+    mark_deploy_status(deploy_id,
+                       state='success',
+                       owner=owner,
+                       repository=repository)
 
 @task
-def check_pr(pr_number):
+def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp'):
     result = OrderedDict()
-    repo = github_config(repository='gisce/erp')['repository']
+    repo = github_config(
+        repository='{}/{}'.format(owner, repository))['repository']
     logger.info('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
     # Pagination documentation: https://developer.github.com/v3/#pagination
@@ -439,7 +515,7 @@ def check_pr(pr_number):
     commits = json.loads(r.text)
 
     with settings(warn_only=True, sudo_user='erp'):
-        with cd("/home/erp/src/erp"):
+        with cd("{}/{}".format(src, repository)):
             for commit in commits:
                 fh = StringIO.StringIO()
                 commit_message = (
@@ -466,7 +542,7 @@ def check_pr(pr_number):
     return result
 
 @task
-def prs_status(prs, separator=' '):
+def prs_status(prs, separator=' ', owner='gisce', repository='erp'):
     logger.info('Marking as deployed on GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
@@ -477,7 +553,9 @@ def prs_status(prs, separator=' '):
     PRS = {}
     for pr_number in pr_list:
         try:
-            url = "https://api.github.com/repos/gisce/erp/pulls/%s" % pr_number
+            url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
+                owner, repository, pr_number
+            )
             r = requests.get(url, headers=headers)
             pull = json.loads(r.text)
             state_pr = pull['state']
