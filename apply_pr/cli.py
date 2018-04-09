@@ -20,8 +20,23 @@ def configure_logging():
 @click.option("--pr", help="Pull request to apply", required=True)
 @click.option("--host", help="Host to apply", required=True)
 @click.option("--from-number", help="From commit number", default=0)
-@click.option("--from-commit", help="From commit hash", default=None)
-def apply_pr(pr, host, from_number, from_commit):
+@click.option("--from-commit", help="From commit hash (included)",
+              default=None, show_default=True)
+@click.option("--force-hostname", help="Force hostname",
+              default=False, show_default=True)
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+@click.option('--src', help='Remote src path',
+              default='/home/erp/src', show_default=True)
+def apply_pr(
+        pr, host, from_number, from_commit, force_hostname,
+        owner, repository, src
+):
+    from apply_pr.version import check_version
+    check_version()
+
     from apply_pr import fabfile
 
     url = urlparse(host)
@@ -31,13 +46,23 @@ def apply_pr(pr, host, from_number, from_commit):
     configure_logging()
 
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    execute(apply_pr_task, pr, from_number, from_commit, host=url.hostname)
+    execute(
+        apply_pr_task, pr, from_number, from_commit, force_hostname,
+        src=src, owner=owner, repository=repository,
+        host=url.hostname
+    )
 
 
 @click.command(name='check_pr')
 @click.option('--pr', help='Pull request to check', required=True)
 @click.option('--host', help='Host to check', required=True)
-def check_pr(pr, host):
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+@click.option('--src', help='Remote src path',
+              default='/home/erp/src', show_default=True)
+def check_pr(pr, src, owner, repository, host):
     from apply_pr import fabfile
 
     url = urlparse(host)
@@ -47,33 +72,50 @@ def check_pr(pr, host):
     configure_logging()
 
     check_pr_task = WrappedCallableTask(fabfile.check_pr)
-    execute(check_pr_task, pr, host=url.hostname)
+    execute(check_pr_task, pr,
+            src=src, owner=owner, repository=repository, host=url.hostname)
 
 
 @click.command(name='status_pr')
 @click.option('--deploy-id', help='Deploy id to mark')
-@click.option('--status', help='Status to set.', default='success',
-              type=click.Choice(['success', 'error', 'failure']))
-def status_pr(deploy_id, status):
+@click.option('--status', type=click.Choice(['success', 'error', 'failure']),
+              help='Status to set', default='success', show_default=True)
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+def status_pr(deploy_id, status, owner, repository):
     from apply_pr import fabfile
 
     configure_logging()
 
     mark_deploy_status = WrappedCallableTask(fabfile.mark_deploy_status)
-    execute(mark_deploy_status, deploy_id, status)
+    execute(mark_deploy_status, deploy_id, status,
+            owner=owner, repository=repository)
 
 
 @click.command(name='check_prs_status')
-@click.option('--prs', help='List of pull request separated by space(by default)', required=True)
-@click.option('--separator', help='Character separator of list by default is space', default=' ', required=True)
-def check_prs_status(prs, separator):
+@click.option('--prs', required=True,
+              help='List of pull request separated by space (by default)')
+@click.option('--separator',
+              help='Character separator of list by default is space',
+              default=' ', required=True, show_default=True)
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+def check_prs_status(prs, separator, owner, repository):
     from apply_pr import fabfile
 
     log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
     logging.basicConfig(level=log_level)
 
     check_pr_task = WrappedCallableTask(fabfile.prs_status)
-    execute(check_pr_task, prs, separator=separator)
+    execute(check_pr_task, prs,
+            owner=owner,
+            repository=repository,
+            separator=separator)
+
 
 if __name__ == '__main__':
     apply_pr()
