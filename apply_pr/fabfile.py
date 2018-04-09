@@ -571,3 +571,64 @@ def prs_status(prs, separator=' ', owner='gisce', repository='erp'):
             print('Error PR {0}'.format(pr_number))
     pprint.pprint(PRS)
     return True
+
+@task
+def auto_changelog(milestone, show_issues=True):
+
+    def get_label(label_keys, labels):
+        for label in labels:
+            name = label['name'].lower()
+            for key in label_keys:
+                if key in name:
+                    return key
+        return 'others'
+
+    def print_item(item):
+        message = u'* {title} [#{number}]({url})'.format(
+            title=item['title'], number=item['number'], url=item['url']
+            )
+        return (message)
+
+    logger.info('Marking as deployed on GitHub')
+    headers = {
+        'Accept': 'application/vnd.github.cannonball-preview+json',
+        'Authorization': 'token %s' % github_config()['token']
+    }
+    url = "https://api.github.com/search/issues?q=is:merged+milestone:"+milestone+"&type=pr&sort=created&order=asc&per_page=250"
+    r = requests.get(url, headers=headers)
+    pull = json.loads(r.text)
+    isses_desc = []
+    pulls_desc = {'others': [],
+                  'facturacio': [],
+                  'atr': [],
+                  'telegestio': [],
+                  'gis': [],
+                  'core': [],
+                  'bug': [],
+                  }
+    label_keys = pulls_desc.keys()
+    other_desc = []
+    for item in pull['items']:
+        url_item = item['html_url']
+        item_info = {'title': item['title'], 'number': item['number'], 'url': url_item}
+        if 'issues' in url_item:
+            isses_desc.append(item_info)
+        elif 'pull' in url_item:
+            key = get_label(label_keys, item['labels'])
+            pulls_desc[key].append(item_info)
+        else:
+            other_desc.append(item_info)
+    print ("# Change log version {milestone}\n".format(milestone=milestone))
+    for key in label_keys:
+        print ('\n## {key}\n'.format(key=key.upper()))
+        for pull in pulls_desc[key]:
+            print(print_item(pull))
+    if show_issues:
+        print('\n# Issues:  \n')
+        for issue in isses_desc:
+            print(print_item(issue))
+    if other_desc:
+        print('\n# Others :  \n')
+        for pull in other_desc:
+            print(print_item(pull))
+    return True
