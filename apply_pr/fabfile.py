@@ -600,7 +600,7 @@ def auto_changelog(milestone, show_issues=True):
     isses_desc = []
     pulls_desc = {'others': [],
                   'facturacio': [],
-                  'switching': [],
+                  'atr': [],
                   'telegestio': [],
                   'gis': [],
                   'core': [],
