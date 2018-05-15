@@ -736,8 +736,7 @@ def create_changelog(milestone, show_issues=False):
     label_keys.pop(index_bug)
     label_keys.append('bug')
     with open('/tmp/{}'.format(changelog_file), 'w') as f:
-        f.write("# Changelog version {milestone}\n**PullRequests** aplicadas {total}".format(
-                    milestone=milestone, total=total_prs))
+        f.write("# Changelog version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
             pulls = pulls_desc.get(key,[])
             if pulls:
