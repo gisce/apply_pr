@@ -16,6 +16,7 @@ setup(
         check_pr=apply_pr.cli:check_pr
         status_pr=apply_pr.cli:status_pr
         check_prs_status=apply_pr.cli:check_prs_status
+        create_changelog=apply_pr.cli:create_changelog
     ''',
     install_requires=[
         'fabric',

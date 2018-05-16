@@ -117,5 +117,30 @@ def check_prs_status(prs, separator, owner, repository):
             separator=separator)
 
 
+@click.command(name='check_prs_status')
+@click.option('-m', '--milestone', required=True,
+              help='Milestone to get the issues from (version)')
+@click.option('--issues/--no-issues', default=False, show_default=True,
+              help='Also get the data on the issues')
+@click.option('--changelog_path', default='/tmp', show_default=True,
+              help='Path to drop the changelog file in')
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+def create_changelog(milestone, issues, changelog_path, owner, repository):
+    from apply_pr import fabfile
+
+    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
+    logging.basicConfig(level=log_level)
+    changelog_task = WrappedCallableTask(fabfile.create_changelog)
+    execute(changelog_task,
+            milestone,
+            issues,
+            changelog_path,
+            owner=owner,
+            repository=repository)
+
+
 if __name__ == '__main__':
     apply_pr()

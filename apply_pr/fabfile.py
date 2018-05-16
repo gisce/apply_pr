@@ -635,7 +635,9 @@ def auto_changelog(milestone, show_issues=True):
 
 
 @task
-def create_changelog(milestone, show_issues=False):
+def create_changelog(
+        milestone, show_issues=False, changelog_path='/tmp',
+        owner='gisce', repository='erp'):
 
     def get_label(label_keys, labels):
         for label in labels:
@@ -661,23 +663,37 @@ def create_changelog(milestone, show_issues=False):
         body = re.sub('\n## ', '\n### ', body).strip()
         body = re.sub(
             '#(\d+)',
-            '[:fa-github: \g<1>](https://github.com/gisce/erp/pull/\g<1>)', body)
+            '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
+                owner, repository
+            ), body)
         body = re.sub(
             '- #(\d+)',
-            '- [:fa-github:  \g<1>](https://github.com/gisce/erp/pull/\g<1>)', body)
+            '- [:fa-github:  \g<1>](https://github.com/{}/{}/pull/\g<1>)'
+            ''.format(
+                owner, repository
+            ), body)
 
-        message = u'\n\n## {title} [:fa-github: {number}]({url})  \n\n{body}'.format(
-            title=item['title'], number=item['number'], url=item['url'], body=body
+        message = (
+            u'\n\n## {title} [:fa-github: {number}]({url})  \n\n{body}'.format(
+                title=item['title'], number=item['number'],
+                url=item['url'], body=body
             )
-        return (message)
+        )
+        return message
 
-
-    logger.info('Marking as deployed on GitHub')
+    logger.info('Getting PRs from GitHub')
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
     }
-    url = "https://api.github.com/search/issues?q=is:pr+is:merged+milestone:"+milestone+"&type=pr&sort=created&order=asc&per_page=250"
+    url = ("https://api.github.com/search/issues"
+           "?q=is:pr+is:merged+milestone:{milestone}+repo:{owner}/{repository}"
+           "&type=pr"
+           "&sort=create"
+           "d&order=asc"
+           "&per_page=250").format(
+        milestone=milestone, owner=owner, repository=repository
+    )
     r = requests.get(url, headers=headers)
 
     pull = json.loads(r.text)
@@ -721,7 +737,12 @@ def create_changelog(milestone, show_issues=False):
     number = 0
     for item in pulls_items:
         url_item = item['html_url']
-        item_info = {'title': item['title'], 'number': item['number'], 'url': url_item, 'body': item['body']}
+        item_info = {
+            'title': item['title'],
+            'number': item['number'],
+            'url': url_item,
+            'body': item['body']
+        }
         if 'issues' in url_item:
             isses_desc.append(item_info)
         elif 'pull' in url_item:
@@ -730,12 +751,14 @@ def create_changelog(milestone, show_issues=False):
         else:
             other_desc.append(item_info)
         number += 1
-    print('Total imported: {}'.format(number))
+    logger.info('Total imported: {}'.format(number))
     pulls_desc.pop('custom')
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
     label_keys.append('bug')
-    with open('/tmp/{}'.format(changelog_file), 'w') as f:
+    logger.info('Writting changelog on {}/{}'.format(
+        changelog_path, changelog_file))
+    with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
         f.write("# Changelog version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
             pulls = pulls_desc.get(key,[])
@@ -757,7 +780,7 @@ def create_changelog(milestone, show_issues=False):
             for pull in pulls_desc.get(key, []):
                 f.write(print_item_detail(pull))
         if show_issues:
-            print('\n# Issues:  \n')
+            logger.info('\n# Issues:  \n')
             for issue in isses_desc:
                 f.write(print_item_detail(issue))
         if other_desc:
