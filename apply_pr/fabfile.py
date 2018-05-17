@@ -642,6 +642,8 @@ def create_changelog(
     def get_label(label_keys, labels):
         for label in labels:
             name = label['name'].lower()
+            if name in 'custom':
+                return 'custom'
             for key in label_keys:
                 if key in name:
                     return key
@@ -655,7 +657,7 @@ def create_changelog(
             )
         return (message)
 
-    def print_item_detail(item):
+    def print_item_detail(item, key=None):
         body = item['body']
         body = re.sub('^# ', '### ', body).strip()
         body = re.sub('\n# ', '\n### ', body).strip()
@@ -672,11 +674,13 @@ def create_changelog(
             ''.format(
                 owner, repository
             ), body)
-
+        label = ''
+        if key:
+            label = u'\n<span class="label label-blue">{}</span>'.format(key)
         message = (
-            u'\n\n## {title} [:fa-github: {number}]({url})  \n\n{body}'.format(
+            u'\n\n## {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
                 title=item['title'], number=item['number'],
-                url=item['url'], body=body
+                url=item['url'], body=body, label=label
             )
         )
         return message
@@ -778,13 +782,13 @@ def create_changelog(
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
             for pull in pulls_desc.get(key, []):
-                f.write(print_item_detail(pull))
+                f.write(print_item_detail(pull, key))
         if show_issues:
             logger.info('\n# Issues:  \n')
             for issue in isses_desc:
-                f.write(print_item_detail(issue))
+                f.write(print_item_detail(issue, key))
         if other_desc:
             print('\n# Others :  \n')
             for pull in other_desc:
-                f.write(print_item_detail(pull))
+                f.write(print_item_detail(pull, key))
     return True
