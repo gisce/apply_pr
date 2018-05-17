@@ -19,7 +19,7 @@ setup(
         create_changelog=apply_pr.cli:create_changelog
     ''',
     install_requires=[
-        'fabric',
+        'fabric<2.0',
         'osconf',
         'python-slugify',
         'requests',
