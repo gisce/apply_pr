@@ -632,3 +632,159 @@ def auto_changelog(milestone, show_issues=True):
         for pull in other_desc:
             print(print_item(pull))
     return True
+
+
+@task
+def create_changelog(
+        milestone, show_issues=False, changelog_path='/tmp',
+        owner='gisce', repository='erp'):
+
+    def get_label(label_keys, labels):
+        for label in labels:
+            name = label['name'].lower()
+            for key in label_keys:
+                if key in name:
+                    return key
+        return 'others'
+
+    def print_item(item):
+        title_anchor = slugify(item['title'])
+        message = u'\n* {title} [:fa-plus-circle: detalles](detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
+            title=item['title'], number=item['number'], url=item['url'],
+            milestone=milestone, title_anchor=title_anchor
+            )
+        return (message)
+
+    def print_item_detail(item):
+        body = item['body']
+        body = re.sub('^# ', '### ', body).strip()
+        body = re.sub('\n# ', '\n### ', body).strip()
+        body = re.sub('^## ', '### ', body).strip()
+        body = re.sub('\n## ', '\n### ', body).strip()
+        body = re.sub(
+            '#(\d+)',
+            '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
+                owner, repository
+            ), body)
+        body = re.sub(
+            '- #(\d+)',
+            '- [:fa-github:  \g<1>](https://github.com/{}/{}/pull/\g<1>)'
+            ''.format(
+                owner, repository
+            ), body)
+
+        message = (
+            u'\n\n## {title} [:fa-github: {number}]({url})  \n\n{body}'.format(
+                title=item['title'], number=item['number'],
+                url=item['url'], body=body
+            )
+        )
+        return message
+
+    logger.info('Getting PRs from GitHub')
+    headers = {
+        'Accept': 'application/vnd.github.cannonball-preview+json',
+        'Authorization': 'token %s' % github_config()['token']
+    }
+    url = ("https://api.github.com/search/issues"
+           "?q=is:pr+is:merged+milestone:{milestone}+repo:{owner}/{repository}"
+           "&type=pr"
+           "&sort=create"
+           "d&order=asc"
+           "&per_page=250").format(
+        milestone=milestone, owner=owner, repository=repository
+    )
+    r = requests.get(url, headers=headers)
+
+    pull = json.loads(r.text)
+    total_prs = pull['total_count']
+    pulls_items= []
+    total_fetch = 0
+    page = 1
+    while total_fetch < total_prs:
+        items = pull['items']
+        # pprint.pprint(items)
+        total_fetch += len(items)
+        pulls_items += items
+        if total_fetch >= total_prs:
+            break
+        page += 1
+        new_url = url + "&page={}".format(page)
+        r = requests.get(new_url, headers=headers)
+        pull = json.loads(r.text)
+        if page == 10:
+            break
+
+    isses_desc = []
+    pulls_desc = OrderedDict(
+        [
+            ('custom', []),
+            ('bug', []),
+            ('core', []),
+            ('atr', []),
+            ('telegestio', []),
+            ('gis', []),
+            ('facturacio', []),
+            ('medidas', []),
+            ('others', []),
+        ]
+    )
+    label_keys = pulls_desc.keys()
+    other_desc = []
+    changelog_file = 'changelog_{}.md'.format(milestone)
+    detailed_file = 'detailed_{}.md'.format(milestone)
+    print('Total PRs: {}'.format(total_prs))
+    number = 0
+    for item in pulls_items:
+        url_item = item['html_url']
+        item_info = {
+            'title': item['title'],
+            'number': item['number'],
+            'url': url_item,
+            'body': item['body']
+        }
+        if 'issues' in url_item:
+            isses_desc.append(item_info)
+        elif 'pull' in url_item:
+            key = get_label(label_keys, item['labels'])
+            pulls_desc[key].append(item_info)
+        else:
+            other_desc.append(item_info)
+        number += 1
+    logger.info('Total imported: {}'.format(number))
+    pulls_desc.pop('custom')
+    index_bug = label_keys.index('bug')
+    label_keys.pop(index_bug)
+    label_keys.append('bug')
+    logger.info('Writting changelog on {}/{}'.format(
+        changelog_path, changelog_file))
+    with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
+        f.write("# Changelog version {milestone}\n".format(milestone=milestone))
+        for key in label_keys:
+            pulls = pulls_desc.get(key,[])
+            if pulls:
+                f.write('\n## {key}\n'.format(key=key.upper()))
+                for pull in pulls_desc.get(key,[]):
+                    f.write(print_item(pull))
+        if show_issues:
+            f.write('\n# Issues:  \n')
+            for issue in isses_desc:
+                f.write(print_item(issue))
+        if other_desc:
+            f.write('\n# Others :  \n')
+            for pull in other_desc:
+                f.write(print_item(pull))
+    with open('/tmp/{}'.format(detailed_file) , 'w') as f:
+        f.write("# Detalles version {milestone}\n".format(milestone=milestone))
+        for key in label_keys:
+            for pull in pulls_desc.get(key, []):
+                f.write(print_item_detail(pull))
+        if show_issues:
+            logger.info('\n# Issues:  \n')
+            for issue in isses_desc:
+                f.write(print_item_detail(issue))
+        if other_desc:
+            print('\n# Others :  \n')
+            for pull in other_desc:
+                f.write(print_item_detail(pull))
+    return True
