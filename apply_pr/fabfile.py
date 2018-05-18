@@ -644,7 +644,7 @@ def create_changelog(
     def get_label(label_keys, labels):
         for label in labels:
             name = label['name'].lower()
-            if name in 'custom':
+            if name == 'custom':
                 return 'custom'
 
         for label in labels:
