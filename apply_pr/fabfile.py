@@ -639,7 +639,14 @@ def create_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
 
+    SKIP_LABELS = ['custom', 'to be merged','deployed']
+
     def get_label(label_keys, labels):
+        for label in labels:
+            name = label['name'].lower()
+            if name == 'custom':
+                return 'custom'
+
         for label in labels:
             name = label['name'].lower()
             for key in label_keys:
@@ -655,7 +662,7 @@ def create_changelog(
             )
         return (message)
 
-    def print_item_detail(item):
+    def print_item_detail(item, key=None):
         body = item['body']
         body = re.sub('^# ', '### ', body).strip()
         body = re.sub('\n# ', '\n### ', body).strip()
@@ -672,11 +679,19 @@ def create_changelog(
             ''.format(
                 owner, repository
             ), body)
-
+        label = ''
+        if key:
+            for l in item['labels']:
+                if l['name'] not in SKIP_LABELS:
+                    label += u' <span class="label" ' \
+                             u'style="background-color: #{color};">{name}</span>'.format(
+                                    name=l['name'],
+                        color=l['color'])
+                label = '\n'+label
         message = (
-            u'\n\n## {title} [:fa-github: {number}]({url})  \n\n{body}'.format(
+            u'\n\n## {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
                 title=item['title'], number=item['number'],
-                url=item['url'], body=body
+                url=item['url'], body=body, label=label
             )
         )
         return message
@@ -741,7 +756,8 @@ def create_changelog(
             'title': item['title'],
             'number': item['number'],
             'url': url_item,
-            'body': item['body']
+            'body': item['body'],
+            'labels': item['labels']
         }
         if 'issues' in url_item:
             isses_desc.append(item_info)
@@ -778,13 +794,13 @@ def create_changelog(
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
             for pull in pulls_desc.get(key, []):
-                f.write(print_item_detail(pull))
+                f.write(print_item_detail(pull, key))
         if show_issues:
             logger.info('\n# Issues:  \n')
             for issue in isses_desc:
-                f.write(print_item_detail(issue))
+                f.write(print_item_detail(issue, key))
         if other_desc:
             print('\n# Others :  \n')
             for pull in other_desc:
-                f.write(print_item_detail(pull))
+                f.write(print_item_detail(pull, key))
     return True
