@@ -101,8 +101,7 @@ def status_pr(deploy_id, status, owner, repository):
               help='Character separator of list by default is space',
               default=' ', required=True, show_default=True)
 @click.option('--version',
-              help='Character separator of list by default is space',
-              default='', required=False)
+              help="Compare with milestone and show if included in prs")
 @click.option('--owner', help='GitHub owner name',
               default='gisce', show_default=True)
 @click.option('--repository', help='GitHub repository name',

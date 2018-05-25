@@ -601,7 +601,7 @@ def prs_status(
             print('ERR\t{}'.format(prmsg))
     if version:
         print(colors.yellow(
-            '\nTo apply: "{}"\n'.format(' '.join(sorted(TO_APPLY)))
+            '\nNot Included: "{}"\n'.format(' '.join(sorted(TO_APPLY)))
         ))
     return True
 
