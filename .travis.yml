@@ -5,7 +5,7 @@ python:
 - '3.6'
 script: 
 - "python setup.py sdist"
-- "pip install dist/apply_pr`cat setup.py | grep version | cut -d "'" -f2`.tar.gz"
+- "pip install dist/*.tar.gz"
 deploy:
   provider: pypi
   user: gisce
