@@ -15,13 +15,13 @@ register commands that call the fabric scripts.
 
 The following commands are supported with apply_pr:
 
-| Console Command | Description                                                                 |
-|:---------------:|:----------------------------------------------------------------------------|
-|     apply_pr    | Apply a PR to a remote server                                               |
-|     check_pr    | Check if the PR's commits are applied on the server                         |
-|    status_pr    | Update the deploy status on GitHub for the PR                               |
-| check_prs_status| Check the PRs status (whether they are or not merged and at which milestone)|
-| create_changelog| Creates the changelog for all PRs merged in a milestone                     |
+| Console Command | Description                                                                 | Wiki page                                                                             |
+|:---------------:|:----------------------------------------------------------------------------|:--------------------------------------------------------------------------------------|
+|     apply_pr    | Apply a PR to a remote server                                               | [Apply a Pull Request](https://github.com/gisce/apply_pr/wiki/Apply-a-Pull-Request)   |
+|     check_pr    | Check if the PR's commits are applied on the server                         | [Check Applied patches](https://github.com/gisce/apply_pr/wiki/Check-Applied-patches) |
+|    status_pr    | Update the deploy status on GitHub for the PR                               | [Mark deploy status](https://github.com/gisce/apply_pr/wiki/Mark-deploy-status)       |
+| check_prs_status| Check the PRs status (whether they are or not merged and at which milestone)| [Check PRs Status](https://github.com/gisce/apply_pr/wiki/Check-the-PRs-status)       |
+| create_changelog| Creates the changelog for all PRs merged in a milestone                     | [Create Changelog](https://github.com/gisce/apply_pr/wiki/Create-Changelog)           |
 
 
 ## Install
