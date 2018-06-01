@@ -2,7 +2,10 @@ sudo: false
 language: python
 python:
 - '2.7'
-script: "pip install -e ."
+- '3.6'
+script: 
+- "python setup.py sdist"
+- "pip install dist/*.tar.gz"
 deploy:
   provider: pypi
   user: gisce
