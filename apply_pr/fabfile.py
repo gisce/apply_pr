@@ -542,8 +542,8 @@ def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp'):
     return result
 
 @task
-def prs_status(prs, separator=' ', owner='gisce', repository='erp'):
-    logger.info('Marking as deployed on GitHub')
+def prs_status(
+        prs, separator=' ', owner='gisce', repository='erp', version=False):
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
@@ -551,7 +551,9 @@ def prs_status(prs, separator=' ', owner='gisce', repository='erp'):
     prs = re.sub('{}+'.format(separator), separator, prs)
     pr_list = prs.split(separator)
     PRS = {}
-    for pr_number in pr_list:
+    ERRORS = []
+    TO_APPLY = []
+    for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
         try:
             url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
                 owner, repository, pr_number
@@ -561,15 +563,46 @@ def prs_status(prs, separator=' ', owner='gisce', repository='erp'):
             state_pr = pull['state']
             merged_at = pull['merged_at']
             milestone = pull['milestone']['title']
-            message = 'PR {number}=> state {state_pr} merged_at {merged_at} milestone {milestone}'.format(
-                number=pr_number, state_pr=state_pr, merged_at=merged_at, milestone=milestone
+            message = (
+                'PR {number}=>'
+                ' state {state_pr}'
+                ' merged_at {merged_at}'
+                ' milestone {milestone}'.format(
+                    number=pr_number, state_pr=state_pr,
+                    merged_at=merged_at, milestone=milestone
+                )
             )
+            if version:
+                if milestone <= version:
+                    if state_pr != 'closed':
+                        message = colors.yellow(message)
+                        TO_APPLY.append(str(pr_number))
+                    else:
+                        message = colors.green(message)
+                else:
+                    message = colors.red(message)
+                    TO_APPLY.append(str(pr_number))
             PRS.setdefault(milestone, [])
             PRS[milestone] += [message]
         except Exception as e:
-            logger.error('Error PR {0}'.format(pr_number))
-            print('Error PR {0}'.format(pr_number))
-    pprint.pprint(PRS)
+            # logger.error('Error PR {0}'.format(pr_number))
+            err_msg = colors.red(
+                'Error PR {0} : https://github.com/gisce/erp/pull/{0}'.format(
+                    pr_number
+                )
+            )
+            tqdm.write(err_msg)
+            ERRORS.append(err_msg)
+    for milestone in PRS.keys():
+        print('\nMilestone {}'.format(milestone))
+        for prmsg in PRS[milestone]:
+            print('\t{}'.format(prmsg))
+    for prmsg in ERRORS:
+            print('ERR\t{}'.format(prmsg))
+    if version:
+        print(colors.yellow(
+            '\nNot Included: "{}"\n'.format(' '.join(sorted(TO_APPLY)))
+        ))
     return True
 
 @task

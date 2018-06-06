@@ -100,11 +100,13 @@ def status_pr(deploy_id, status, owner, repository):
 @click.option('--separator',
               help='Character separator of list by default is space',
               default=' ', required=True, show_default=True)
+@click.option('--version',
+              help="Compare with milestone and show if included in prs")
 @click.option('--owner', help='GitHub owner name',
               default='gisce', show_default=True)
 @click.option('--repository', help='GitHub repository name',
               default='erp', show_default=True)
-def check_prs_status(prs, separator, owner, repository):
+def check_prs_status(prs, separator, version, owner, repository):
     from apply_pr import fabfile
 
     log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
@@ -114,7 +116,8 @@ def check_prs_status(prs, separator, owner, repository):
     execute(check_pr_task, prs,
             owner=owner,
             repository=repository,
-            separator=separator)
+            separator=separator,
+            version=version)
 
 
 @click.command(name='check_prs_status')
