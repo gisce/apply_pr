@@ -805,8 +805,7 @@ def create_changelog(
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
     label_keys.append('bug')
-    logger.info('Writting changelog on {}/{}'.format(
-        changelog_path, changelog_file))
+    logger.info('Writting changelog on {}/:'.format(changelog_path))
     with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
         f.write("# Changelog version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
@@ -823,7 +822,8 @@ def create_changelog(
             f.write('\n# Others :  \n')
             for pull in other_desc:
                 f.write(print_item(pull))
-    with open('/tmp/{}'.format(detailed_file) , 'w') as f:
+    logger.info('    {}/{}'.format(changelog_path, changelog_file))
+    with open('{}/{}'.format(changelog_path, detailed_file) , 'w') as f:
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
         for key in label_keys:
             for pull in pulls_desc.get(key, []):
@@ -836,4 +836,5 @@ def create_changelog(
             print('\n# Others :  \n')
             for pull in other_desc:
                 f.write(print_item_detail(pull, key))
+    logger.info('    {}/{}'.format(changelog_path, detailed_file))
     return True
