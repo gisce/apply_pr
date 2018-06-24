@@ -446,7 +446,7 @@ def apply_pr(
                                repository=repository)
     if not deploy_id:
         tqdm.write(colors.magenta(
-            'No deploy id! you must mark the pr manually'
+            'No deploy id! you must mark the Pull Request manually'
         ))
     try:
         mark_deploy_status(deploy_id,
