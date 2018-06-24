@@ -47,7 +47,7 @@ def apply_pr(
 
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
     execute(
-        apply_pr_task, pr, from_number, from_commit, force_hostname,
+        apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository,
         host=url.hostname
     )
