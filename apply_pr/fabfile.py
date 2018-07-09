@@ -362,9 +362,19 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
         print("Deployment id: {id} to {description}".format(**deployment))
         statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
         for status in reversed(statusses):
-            print("  - {state} by {creator[login]} on {created_at}".format(
-                **status
-            ))
+            status_text = (
+                "  - {state} by {creator[login]} on {created_at}".format(
+                    **status
+                )
+            )
+            formatter = str
+            if status['state'] == 'pending':
+                formatter = colors.yellow
+            elif status['state'] in ['error', 'failure']:
+                formatter = colors.red
+            elif status['state'] == 'success':
+                formatter = colors.green
+            print(formatter(status_text))
 
 
 @task
