@@ -13,7 +13,7 @@ setup(
     entry_points='''
         [console_scripts]
         apply_pr=apply_pr.cli:apply_pr
-        check_pr=apply_pr.cli:check_pr
+        get_deploys=apply_pr.cli:get_deploys
         status_pr=apply_pr.cli:status_pr
         check_prs_status=apply_pr.cli:check_prs_status
         create_changelog=apply_pr.cli:create_changelog

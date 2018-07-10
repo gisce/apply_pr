@@ -53,27 +53,20 @@ def apply_pr(
     )
 
 
-@click.command(name='check_pr')
+@click.command(name='get_deploys')
 @click.option('--pr', help='Pull request to check', required=True)
-@click.option('--host', help='Host to check', required=True)
 @click.option('--owner', help='GitHub owner name',
               default='gisce', show_default=True)
 @click.option('--repository', help='GitHub repository name',
               default='erp', show_default=True)
-@click.option('--src', help='Remote src path',
-              default='/home/erp/src', show_default=True)
-def check_pr(pr, src, owner, repository, host):
+def get_deploys(pr, owner, repository):
     from apply_pr import fabfile
-
-    url = urlparse(host)
-    env.user = url.username
-    env.password = url.password
 
     configure_logging()
 
-    check_pr_task = WrappedCallableTask(fabfile.check_pr)
-    execute(check_pr_task, pr,
-            src=src, owner=owner, repository=repository, host=url.hostname)
+    get_deploys_task = WrappedCallableTask(fabfile.get_deploys)
+    execute(get_deploys_task, pr,
+            owner=owner, repository=repository)
 
 
 @click.command(name='status_pr')
