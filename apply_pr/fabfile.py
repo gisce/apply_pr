@@ -257,17 +257,36 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
 def export_patches_from_github(
     pr_number, from_commit=None, owner='gisce', repository='erp'
 ):
+    def parse_github_links_header(links_header):
+        links = {}
+        full_links = links_header.split(',')
+        for link in full_links:
+            url, ref = link.split(';')
+            url = url.strip()[1:-1]
+            ref = ref.split('=')[-1].strip()[1:-1]
+            links[ref] = url
+        return links
+
     repo = github_config(
         repository='{}/{}'.format(owner, repository))['repository']
     patch_folder = "deploy/patches/%s" % pr_number
     local("mkdir -p %s" % patch_folder)
-    logger.info('Exporting patches from GitHub')
+    tqdm.write('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
     # Pagination documentation: https://developer.github.com/v3/#pagination
     url = "https://api.github.com/repos/%s/pulls/%s/commits?per_page=100" \
           % (repo, pr_number)
     r = requests.get(url, headers=headers)
     commits = json.loads(r.text)
+    url_page = 1
+    links = parse_github_links_header(r.headers['link'])
+    while links['last'][-1] != str(url_page):
+        url_page += 1
+        tqdm.write(colors.yellow(
+            '    - Getting extra commits page {}'.format(url_page)))
+        r = requests.get(links['next'], headers=headers)
+        commits += json.loads(r.text)
+
     patch_headers = headers.copy()
     patch_headers['Accept'] = 'application/vnd.github.patch'
     patch_number = 0
