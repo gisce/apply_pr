@@ -287,7 +287,6 @@ def export_patches_from_github(
         r = requests.get(links['next'], headers=headers)
         commits += json.loads(r.text)
 
-    import pudb;pu.db
     patch_headers = headers.copy()
     patch_headers['Accept'] = 'application/vnd.github.patch'
     patch_number = 0
