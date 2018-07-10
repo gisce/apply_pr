@@ -1,5 +1,7 @@
 from setuptools import setup, find_packages
 
+with open('requirements.txt', 'r') as f:
+    INSTALL_REQUIRES = f.readlines()
 
 setup(
     name='apply_pr',
@@ -18,12 +20,5 @@ setup(
         check_prs_status=apply_pr.cli:check_prs_status
         create_changelog=apply_pr.cli:create_changelog
     ''',
-    install_requires=[
-        'fabric<2.0',
-        'osconf',
-        'python-slugify',
-        'requests',
-        'click',
-        'tqdm'
-    ]
+    install_requires=INSTALL_REQUIRES
 )
