@@ -466,6 +466,17 @@ def check_is_rolling(src='/home/erp/src', repository='erp'):
 
 
 @task
+def check_am_session(src='/home/erp/src', repository='erp'):
+    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+        with cd("{}/{}".format(src, repository)):
+            res = sudo("ls .git/rebase-apply")
+            if not res.return_code:
+                message = "The repository is in the middle of an am session!"
+                tqdm.write(colors.red(message))
+                abort(message)
+
+
+@task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
@@ -473,6 +484,7 @@ def apply_pr(
     try:
         check_it_exists(src=src, repository=repository)
         check_is_rolling(src=src, repository=repository)
+        check_am_session(src=src, repository=repository)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
