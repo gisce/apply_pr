@@ -27,6 +27,7 @@ apply_pr_options = deployment_options + [
     click.option("--force-hostname", help="Force hostname",  default=False)
 ]
 
+
 def add_options(options):
     def _add_options(func):
         for option in reversed(options):
@@ -42,9 +43,9 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-@click.command(name="sastre")
+@click.command(name="apply_pr")
 @add_options(apply_pr_options)
-def sastre(
+def apply_pr(
         pr, host, from_number, from_commit, force_hostname,
         owner, repository, src
 ):
@@ -65,22 +66,6 @@ def sastre(
         src=src, owner=owner, repository=repository,
         host=url.hostname
     )
-
-@click.command()
-@add_options(apply_pr_options)
-def tailor(**kwargs):
-    sastre()
-
-@click.command()
-@add_options(apply_pr_options)
-def apply_pr(**kwargs):
-    """You can apply patches using 'sastre' or 'tailor'.\n
-    Use 'sastre --help' or 'tailor --help' for more information."""
-    print(colors.yellow(
-        "You can apply patches using 'sastre' or 'tailor'.\n"
-        "Use 'sastre --help' or 'tailor --help' for more information."
-    ))
-    sastre()
 
 
 @click.command(name='check_pr')
@@ -160,5 +145,10 @@ def create_changelog(milestone, issues, changelog_path, owner, repository):
             repository=repository)
 
 
+@click.command(name='tailor')
+@click.argument('command', default='help')
+def tailor(**kwargs):
+    print('mel')
+
 if __name__ == '__main__':
-    sastre()
+    tailor()

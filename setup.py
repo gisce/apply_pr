@@ -12,7 +12,7 @@ setup(
     description='Apply Pull Requests from GitHub',
     entry_points='''
         [console_scripts]
-        sastre=apply_pr.cli:sastre
+        sastre=apply_pr.cli:tailor
         tailor=apply_pr.cli:tailor
         apply_pr=apply_pr.cli:apply_pr
         check_pr=apply_pr.cli:check_pr
