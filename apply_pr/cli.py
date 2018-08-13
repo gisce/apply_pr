@@ -43,12 +43,18 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-@click.command(name="apply_pr")
+@click.group(name='tailor')
+def tailor(**kwargs):
+    pass
+
+
+@tailor.command(name="apply_pr")
 @add_options(apply_pr_options)
 def apply_pr(
         pr, host, from_number, from_commit, force_hostname,
         owner, repository, src
 ):
+    """Deploy a PR into a remote server via Fabric"""
     from apply_pr.version import check_version
     check_version()
 
@@ -68,10 +74,18 @@ def apply_pr(
     )
 
 
-@click.command(name='check_pr')
+@tailor.command(name='check_pr')
 @click.option('--pr', help='Pull request to check', required=True)
+@click.option('--force/--no-force', default=False,
+              help='Forces the usage of this command')
 @add_options(deployment_options)
-def check_pr(pr, src, owner, repository, host):
+def check_pr(pr, force, src, owner, repository, host):
+    """DEPRECATED - Check for applied commits on PR"""
+    print(colors.red("This option has been deprecated as it doesn't work"))
+    if not force:
+        print(colors.red(
+            "Use '--force' to force the usage for this command (as is)"))
+        exit()
     from apply_pr import fabfile
 
     url = urlparse(host)
@@ -85,12 +99,13 @@ def check_pr(pr, src, owner, repository, host):
             src=src, owner=owner, repository=repository, host=url.hostname)
 
 
-@click.command(name='status_pr')
+@tailor.command(name='status_pr')
 @click.option('--deploy-id', help='Deploy id to mark')
 @click.option('--status', type=click.Choice(['success', 'error', 'failure']),
               help='Status to set', default='success', show_default=True)
 @add_options(github_options)
 def status_pr(deploy_id, status, owner, repository):
+    """Update the status of a deploy into GitHub"""
     from apply_pr import fabfile
 
     configure_logging()
@@ -100,7 +115,7 @@ def status_pr(deploy_id, status, owner, repository):
             owner=owner, repository=repository)
 
 
-@click.command(name='check_prs_status')
+@tailor.command(name='check_prs_status')
 @click.option('--prs', required=True,
               help='List of pull request separated by space (by default)')
 @click.option('--separator',
@@ -110,6 +125,7 @@ def status_pr(deploy_id, status, owner, repository):
               help="Compare with milestone and show if included in prs")
 @add_options(github_options)
 def check_prs_status(prs, separator, version, owner, repository):
+    """Check the status of the PRs for a set of PRs"""
     from apply_pr import fabfile
 
     log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
@@ -123,7 +139,7 @@ def check_prs_status(prs, separator, version, owner, repository):
             version=version)
 
 
-@click.command(name='create_changelog')
+@tailor.command(name='create_changelog')
 @click.option('-m', '--milestone', required=True,
               help='Milestone to get the issues from (version)')
 @click.option('--issues/--no-issues', default=False, show_default=True,
@@ -132,6 +148,7 @@ def check_prs_status(prs, separator, version, owner, repository):
               help='Path to drop the changelog file in')
 @add_options(github_options)
 def create_changelog(milestone, issues, changelog_path, owner, repository):
+    """Create a changelog for the given milestone"""
     from apply_pr import fabfile
 
     log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
@@ -144,11 +161,6 @@ def create_changelog(milestone, issues, changelog_path, owner, repository):
             owner=owner,
             repository=repository)
 
-
-@click.command(name='tailor')
-@click.argument('command', default='help')
-def tailor(**kwargs):
-    print('mel')
 
 if __name__ == '__main__':
     tailor()
