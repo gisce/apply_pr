@@ -45,7 +45,8 @@ def configure_logging():
 
 @click.group(name='tailor')
 def tailor(**kwargs):
-    pass
+    from apply_pr.version import check_version
+    check_version()
 
 
 @tailor.command(name="apply_pr")
@@ -55,9 +56,6 @@ def apply_pr(
         owner, repository, src
 ):
     """Deploy a PR into a remote server via Fabric"""
-    from apply_pr.version import check_version
-    check_version()
-
     from apply_pr import fabfile
 
     url = urlparse(host)
