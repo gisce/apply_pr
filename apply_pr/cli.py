@@ -49,15 +49,30 @@ def tailor(**kwargs):
     check_version()
 
 
-@tailor.command(name="apply_pr")
-@add_options(apply_pr_options)
 def apply_pr(
-        pr, host, from_number, from_commit, force_hostname,
-        owner, repository, src
+    pr, host, from_number, from_commit, force_hostname,
+    owner, repository, src
 ):
-    """Deploy a PR into a remote server via Fabric"""
+    """
+    Deploy a PR into a remote server via Fabric
+    :param pr:              Number of the PR to deploy
+    :type pr:               str
+    :param host:            Host to connect
+    :type host:             str
+    :param from_number:     Number of the commit to deploy from
+    :type from_number:      str
+    :param from_commit:     Hash of the commit to deploy from
+    :type from_commit:      str
+    :param force_hostname:  Hostname used in GitHub
+    :type force_hostname:   str
+    :param owner:           Owner of the repository of GitHub
+    :type owner:            str
+    :param repository:      Name of the repository of GitHub
+    :type repository:       str
+    :param src:             Source path to the repository directory
+    :type src:              str
+    """
     from apply_pr import fabfile
-
     url = urlparse(host)
     env.user = url.username
     env.password = url.password
@@ -70,6 +85,13 @@ def apply_pr(
         src=src, owner=owner, repository=repository,
         host=url.hostname
     )
+
+
+@tailor.command(name="deploy")
+@add_options(apply_pr_options)
+def deploy(**kwargs):
+    """Deploy a PR into a remote server via Fabric"""
+    return apply_pr(**kwargs)
 
 
 @tailor.command(name='check_pr')
@@ -97,11 +119,6 @@ def check_pr(pr, force, src, owner, repository, host):
             src=src, owner=owner, repository=repository, host=url.hostname)
 
 
-@tailor.command(name='status_pr')
-@click.option('--deploy-id', help='Deploy id to mark')
-@click.option('--status', type=click.Choice(['success', 'error', 'failure']),
-              help='Status to set', default='success', show_default=True)
-@add_options(github_options)
 def status_pr(deploy_id, status, owner, repository):
     """Update the status of a deploy into GitHub"""
     from apply_pr import fabfile
@@ -113,15 +130,16 @@ def status_pr(deploy_id, status, owner, repository):
             owner=owner, repository=repository)
 
 
-@tailor.command(name='check_prs_status')
-@click.option('--prs', required=True,
-              help='List of pull request separated by space (by default)')
-@click.option('--separator',
-              help='Character separator of list by default is space',
-              default=' ', required=True, show_default=True)
-@click.option('--version',
-              help="Compare with milestone and show if included in prs")
+@tailor.command(name='status')
+@click.option('--deploy-id', help='Deploy id to mark')
+@click.option('--status', type=click.Choice(['success', 'error', 'failure']),
+              help='Status to set', default='success', show_default=True)
 @add_options(github_options)
+def status(**kwargs):
+    """Update the status of a deploy into GitHub"""
+    status_pr(**kwargs)
+
+
 def check_prs_status(prs, separator, version, owner, repository):
     """Check the status of the PRs for a set of PRs"""
     from apply_pr import fabfile
@@ -135,6 +153,20 @@ def check_prs_status(prs, separator, version, owner, repository):
             repository=repository,
             separator=separator,
             version=version)
+
+
+@tailor.command(name='check_prs')
+@click.option('--prs', required=True,
+              help='List of pull request separated by space (by default)')
+@click.option('--separator',
+              help='Character separator of list by default is space',
+              default=' ', required=True, show_default=True)
+@click.option('--version',
+              help="Compare with milestone and show if included in prs")
+@add_options(github_options)
+def check_prs(**kwargs):
+    """Check the status of the PRs for a set of PRs"""
+    check_prs_status(**kwargs)
 
 
 @tailor.command(name='create_changelog')
