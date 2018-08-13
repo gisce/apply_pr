@@ -14,11 +14,6 @@ setup(
         [console_scripts]
         sastre=apply_pr.cli:tailor
         tailor=apply_pr.cli:tailor
-        apply_pr=apply_pr.cli:apply_pr
-        check_pr=apply_pr.cli:check_pr
-        status_pr=apply_pr.cli:status_pr
-        check_prs_status=apply_pr.cli:check_prs_status
-        create_changelog=apply_pr.cli:create_changelog
     ''',
     install_requires=[
         'fabric<2.0',
