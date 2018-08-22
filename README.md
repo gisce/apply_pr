@@ -15,13 +15,13 @@ register commands that call the fabric scripts.
 
 The following commands are supported with `sastre`:
 
-| Console Command    | Description                                                         | Wiki page                                |
-|:---------------:   |:--------------------------------------------------------------------|:---------------------------------------- |
-| `deploy`           | Apply a PR to a remote server                                       | [Deploy a pull request](#DEPLOY)         |
-| `check_prs`        | Check the status of the PRs for a set of PRs                        | [Check pull requests status](#CHECK-PRS) |
-| `status`           | Update the status of a deploy into GitHub                           | [Mark deploy status](#STATUS)            |
-| `create_changelog` | Create a chnagelog for the given milestone                          | [Create Changelog](#CREATE-CHANGELOG)    |
-| `check_pr`         | **Deprecated:** Check if the PR's commits are applied on the server | [Check Applied patches](#CHECK-PR)       |
+| Console Command    | Description                                                         | Wiki page                                                                                          |
+|:---------------:   |:--------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------|
+| `deploy`           | Apply a PR to a remote server                                       | [Deploy a pull request](https://github.com/gisce/apply_pr/wiki/Apply-a-Pull-Request)               |
+| `check_prs`        | Check the status of the PRs for a set of PRs                        | [Check pull requests status](https://github.com/gisce/apply_pr/wiki/Check-pull-requests-status)    |
+| `status`           | Update the status of a deploy into GitHub                           | [Mark deploy status](https://github.com/gisce/apply_pr/wiki/Mark-deploy-status)                    |
+| `create_changelog` | Create a chnagelog for the given milestone                          | [Create Changelog](https://github.com/gisce/apply_pr/wiki/Create-Changelog)                        |
+| `check_pr`         | **Deprecated:** Check if the PR's commits are applied on the server | [Check Applied patches](https://github.com/gisce/apply_pr/wiki/Check-applied-patches-(deprecated)) |
 
 ## Install
 
