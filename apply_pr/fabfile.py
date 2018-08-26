@@ -593,7 +593,7 @@ def prs_status(
             )
             tqdm.write(err_msg)
             ERRORS.append(err_msg)
-    for milestone in PRS.keys():
+    for milestone in sorted(PRS.keys()):
         print('\nMilestone {}'.format(milestone))
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))
