@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='apply_pr',
-    version='1.8.1',
+    version='1.8.2',
     packages=find_packages(),
     url='https://github.com/gisce/apply_pr',
     license='MIT',
