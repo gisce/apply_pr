@@ -16,6 +16,7 @@ from fabric.exceptions import NetworkError
 from fabric import colors
 from osconf import config_from_environment
 from slugify import slugify
+from os.path import isdir
 import requests
 import StringIO
 from collections import OrderedDict
@@ -247,7 +248,10 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 @task
 def export_patches_from_git(from_commit, to_commit, pr_number):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
-    local("mkdir -p deploy/patches/%s" % pr_number)
+    deploy_path = "deploy/patches/{}".format(pr_number)
+    if isdir(deploy_path):
+        local("rm -r {}".format(deploy_path))
+    local("mkdir -p {}".format(deploy_path))
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
