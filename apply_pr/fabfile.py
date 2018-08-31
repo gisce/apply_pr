@@ -520,6 +520,7 @@ def apply_pr(
         else:
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
+        check_am_session(src=src, repository=repository)
         apply_remote_patches(pr_number,
                              from_,
                              src=src,
