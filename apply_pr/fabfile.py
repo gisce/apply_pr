@@ -1,3 +1,6 @@
+
+# -*- coding: utf-8 -*-
+
 from __future__ import (
     with_statement, absolute_import, unicode_literals, print_function
 )
@@ -687,6 +690,7 @@ def auto_changelog(milestone, show_issues=True):
                   'core': [],
                   'bug': [],
                   }
+
     label_keys = pulls_desc.keys()
     other_desc = []
     for item in pull['items']:
@@ -719,15 +723,18 @@ def auto_changelog(milestone, show_issues=True):
 def create_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
-
+    import copy
     SKIP_LABELS = ['custom', 'to be merged','deployed']
+    GAS_LABEL = 'gas'
+    ELEC_LABEL = u'eléctrico'
+    TYPE_LABELS = [ELEC_LABEL, GAS_LABEL]
 
-    def get_label(label_keys, labels):
-        for label in labels:
-            name = label['name'].lower()
-            if name == 'custom':
-                return 'custom'
-
+    def get_label(label_keys, labels, skip_custom=False):
+        if not skip_custom:
+            for label in labels:
+                name = label['name'].lower()
+                if name == 'custom':
+                    return 'custom'
         for label in labels:
             name = label['name'].lower()
             for key in label_keys:
@@ -745,10 +752,10 @@ def create_changelog(
 
     def print_item_detail(item, key=None):
         body = item['body']
-        body = re.sub('^# ', '### ', body).strip()
-        body = re.sub('\n# ', '\n### ', body).strip()
-        body = re.sub('^## ', '### ', body).strip()
-        body = re.sub('\n## ', '\n### ', body).strip()
+        body = re.sub('^# ', '#### ', body).strip()
+        body = re.sub('\n# ', '\n#### ', body).strip()
+        body = re.sub('^## ', '#### ', body).strip()
+        body = re.sub('\n## ', '\n#### ', body).strip()
         body = re.sub(
             '#(\d+)',
             '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
@@ -770,7 +777,7 @@ def create_changelog(
                         color=l['color'])
                 label = '\n'+label
         message = (
-            u'\n\n## {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
+            u'\n\n### {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
                 title=item['title'], number=item['number'],
                 url=item['url'], body=body, label=label
             )
@@ -825,6 +832,11 @@ def create_changelog(
             ('others', []),
         ]
     )
+    pulls_sep = {
+        GAS_LABEL: copy.deepcopy(pulls_desc),
+        ELEC_LABEL: copy.deepcopy(pulls_desc),
+        'others': copy.deepcopy(pulls_desc)
+    }
     label_keys = pulls_desc.keys()
     other_desc = []
     changelog_file = 'changelog_{}.md'.format(milestone)
@@ -843,25 +855,35 @@ def create_changelog(
         if 'issues' in url_item:
             isses_desc.append(item_info)
         elif 'pull' in url_item:
+            type_key = get_label(TYPE_LABELS, item['labels'], skip_custom=True)
             key = get_label(label_keys, item['labels'])
-            pulls_desc[key].append(item_info)
+            pulls_sep[type_key][key].append(item_info)
         else:
             other_desc.append(item_info)
         number += 1
     logger.info('Total imported: {}'.format(number))
-    pulls_desc.pop('custom')
+    pulls_sep[GAS_LABEL].pop('custom')
+    pulls_sep[ELEC_LABEL].pop('custom')
+    for key in ['gis', 'telegestio', 'medidas', 'facturacio']:
+        pulls_sep[ELEC_LABEL][key] += pulls_sep['others'][key]
+        pulls_sep['others'][key] = []
+    pulls_sep['others'].pop('custom')
+    pulls_sep['COMUN'] = pulls_sep.pop('others')
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
     label_keys.append('bug')
+
     logger.info('Writting changelog on {}/:'.format(changelog_path))
     with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
         f.write("# Changelog version {milestone}\n".format(milestone=milestone))
-        for key in label_keys:
-            pulls = pulls_desc.get(key,[])
-            if pulls:
-                f.write('\n## {key}\n'.format(key=key.upper()))
-                for pull in pulls_desc.get(key,[]):
-                    f.write(print_item(pull))
+        for type_l in TYPE_LABELS + ['COMUN']:
+            f.write('\n## {key}\n'.format(key=type_l.upper()))
+            for key in label_keys:
+                pulls = pulls_sep[type_l].get(key,[])
+                if pulls:
+                    f.write('\n### {key}\n'.format(key=key.upper()))
+                    for pull in pulls:
+                        f.write(print_item(pull))
         if show_issues:
             f.write('\n# Issues:  \n')
             for issue in isses_desc:
@@ -873,9 +895,14 @@ def create_changelog(
     logger.info('    {}/{}'.format(changelog_path, changelog_file))
     with open('{}/{}'.format(changelog_path, detailed_file) , 'w') as f:
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
-        for key in label_keys:
-            for pull in pulls_desc.get(key, []):
-                f.write(print_item_detail(pull, key))
+        for type_l in TYPE_LABELS + ['COMUN']:
+            f.write('\n## {key}\n'.format(key=type_l.upper()))
+            for key in label_keys:
+                pulls = pulls_sep[type_l].get(key,[])
+                if pulls:
+                    f.write('\n### {key}\n'.format(key=key.upper()))
+                    for pull in pulls:
+                        f.write(print_item_detail(pull, key))
         if show_issues:
             logger.info('\n# Issues:  \n')
             for issue in isses_desc:
