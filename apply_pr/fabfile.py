@@ -831,6 +831,8 @@ def create_changelog(
             ('facturacio', []),
             ('medidas', []),
             ('others', []),
+            ('traduccions', []),
+
         ]
     )
     pulls_sep = {
@@ -860,9 +862,6 @@ def create_changelog(
             p_url = "https://api.github.com/repos/{owner}/{repository}/pulls/{number}".format(
                 owner=owner, repository=repository, number=item_info['number']
             )
-            sleep_time = randint(1,5)
-            tqdm.write('Waiting ... {}'.format(sleep_time))
-            #sleep(sleep_time)
             try:
                 r = requests.get(p_url, headers=headers)
                 pull_desc = json.loads(r.text)
@@ -886,10 +885,13 @@ def create_changelog(
     logger.info('Total imported: {}'.format(number))
     pulls_sep[GAS_LABEL].pop('custom')
     pulls_sep[ELEC_LABEL].pop('custom')
+    pulls_sep[ELEC_LABEL].pop('traduccions')
+    pulls_sep[GAS_LABEL].pop('traduccions')
     for key in ['gis', 'telegestio', 'medidas', 'facturacio']:
         pulls_sep[ELEC_LABEL][key] += pulls_sep['others'][key]
         pulls_sep['others'][key] = []
     pulls_sep['others'].pop('custom')
+    pulls_sep['others'].pop('traduccions')
     pulls_sep[COMMON_KEY] = pulls_sep.pop('others')
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
