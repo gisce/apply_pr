@@ -641,15 +641,16 @@ def prs_status(
             )
             tqdm.write(err_msg)
             ERRORS.append(err_msg)
-    for milestone in PRS.keys():
+    for milestone in sorted(PRS.keys()):
         print('\nMilestone {}'.format(milestone))
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))
     for prmsg in ERRORS:
             print('ERR\t{}'.format(prmsg))
     if version:
+        TO_APPLY = sorted(list(set(TO_APPLY)))
         print(colors.yellow(
-            '\nNot Included: "{}"\n'.format(' '.join(sorted(TO_APPLY)))
+            '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
     return True
 
