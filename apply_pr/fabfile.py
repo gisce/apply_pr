@@ -141,8 +141,6 @@ class GitApplier(object):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
-                import time
-                time.sleep(0.1)
         if result.failed:
             try:
                 raise WiggleException
