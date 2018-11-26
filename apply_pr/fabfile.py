@@ -727,7 +727,8 @@ def create_changelog(
     GAS_LABEL = 'gas'
     ELEC_LABEL = u'eléctrico'
     TYPE_LABELS = [ELEC_LABEL, GAS_LABEL]
-
+    TOP_FEATURE = u':fire: top feature'
+    COMMON_KEY = u'COMÚN'
     def get_label(label_keys, labels, skip_custom=False):
         if not skip_custom:
             for label in labels:
@@ -818,6 +819,7 @@ def create_changelog(
             break
 
     isses_desc = []
+    top_pulls = []
     pulls_desc = OrderedDict(
         [
             ('custom', []),
@@ -839,22 +841,43 @@ def create_changelog(
     label_keys = pulls_desc.keys()
     other_desc = []
     changelog_file = 'changelog_{}.md'.format(milestone)
+    top_file = 'top_{}.md'.format(milestone)
     detailed_file = 'detailed_{}.md'.format(milestone)
     print('Total PRs: {}'.format(total_prs))
     number = 0
-    for item in pulls_items:
+    for item in tqdm(pulls_items):
         url_item = item['html_url']
         item_info = {
             'title': item['title'],
             'number': item['number'],
             'url': url_item,
             'body': item['body'],
-            'labels': item['labels']
+            'labels': item['labels'],
         }
         if 'issues' in url_item:
             isses_desc.append(item_info)
         elif 'pull' in url_item:
+            p_url = "https://api.github.com/repos/{owner}/{repository}/pulls/{number}".format(
+                owner=owner, repository=repository, number=item_info['number']
+            )
+            sleep_time = randint(1,5)
+            tqdm.write('Waiting ... {}'.format(sleep_time))
+            #sleep(sleep_time)
+            try:
+                r = requests.get(p_url, headers=headers)
+                pull_desc = json.loads(r.text)
+                item_info['pull_info'] = pull_desc
+                branch = pull_desc['base']['ref']
+            except ConnectionError as e:
+                tqdm.write('Failed to get infor for  {}'.format(item_info['number']))
+                branch = 'developer'
+            
+            if branch != 'developer':
+                continue
             type_key = get_label(TYPE_LABELS, item['labels'], skip_custom=True)
+            top = get_label([TOP_FEATURE], item['labels'], skip_custom=True)
+            if TOP_FEATURE.lower() in top:
+                top_pulls.append(item_info)
             key = get_label(label_keys, item['labels'])
             pulls_sep[type_key][key].append(item_info)
         else:
@@ -867,15 +890,24 @@ def create_changelog(
         pulls_sep[ELEC_LABEL][key] += pulls_sep['others'][key]
         pulls_sep['others'][key] = []
     pulls_sep['others'].pop('custom')
-    pulls_sep['COMUN'] = pulls_sep.pop('others')
+    pulls_sep[COMMON_KEY] = pulls_sep.pop('others')
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
     label_keys.append('bug')
 
+    # TOP FEATURES
+    logger.info('Writting top feature on {}/:'.format(changelog_path))
+    with open('{}/{}'.format(changelog_path, top_file), 'w') as f:
+        f.write("# TOP FEATURES version {milestone}\n".format(milestone=milestone))
+        for pull in top_pulls:
+            f.write(print_item(pull))
+
+
+    # CHANGELOGS
     logger.info('Writting changelog on {}/:'.format(changelog_path))
     with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
         f.write("# Changelog version {milestone}\n".format(milestone=milestone))
-        for type_l in TYPE_LABELS + ['COMUN']:
+        for type_l in TYPE_LABELS + [COMMON_KEY]:
             f.write('\n## {key}\n'.format(key=type_l.upper()))
             for key in label_keys:
                 pulls = pulls_sep[type_l].get(key,[])
@@ -894,7 +926,7 @@ def create_changelog(
     logger.info('    {}/{}'.format(changelog_path, changelog_file))
     with open('{}/{}'.format(changelog_path, detailed_file) , 'w') as f:
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
-        for type_l in TYPE_LABELS + ['COMUN']:
+        for type_l in TYPE_LABELS + [COMMON_KEY]:
             f.write('\n## {key}\n'.format(key=type_l.upper()))
             for key in label_keys:
                 pulls = pulls_sep[type_l].get(key,[])
