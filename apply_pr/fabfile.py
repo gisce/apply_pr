@@ -722,7 +722,8 @@ def create_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
     import copy
-    SKIP_LABELS = ['custom', 'to be merged','deployed']
+
+    SKIP_LABELS = ['custom', 'to be merged','deployed', 'traduccions']
     GAS_LABEL = 'gas'
     ELEC_LABEL = u'eléctrico'
     TYPE_LABELS = [ELEC_LABEL, GAS_LABEL]
