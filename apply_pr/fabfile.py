@@ -499,7 +499,7 @@ def apply_pr(
                                repository=repository)
     if not deploy_id:
         tqdm.write(colors.magenta(
-            'No deploy id! you must mark the pr manually'
+            'No deploy id! you must mark the Pull Request manually'
         ))
     try:
         mark_deploy_status(deploy_id,
@@ -635,13 +635,13 @@ def prs_status(
         except Exception as e:
             # logger.error('Error PR {0}'.format(pr_number))
             err_msg = colors.red(
-                'Error PR {0} : https://github.com/gisce/erp/pull/{0}'.format(
-                    pr_number
+                'Error PR {0} : https://github.com/{}/{}/pull/{}'.format(
+                    owner, repository, pr_number
                 )
             )
             tqdm.write(err_msg)
             ERRORS.append(err_msg)
-    for milestone in PRS.keys():
+    for milestone in sorted(PRS.keys()):
         print('\nMilestone {}'.format(milestone))
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))

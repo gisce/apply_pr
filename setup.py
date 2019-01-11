@@ -1,5 +1,7 @@
 from setuptools import setup, find_packages
 
+with open('requirements.txt', 'r') as f:
+    INSTALL_REQUIRES = f.readlines()
 
 setup(
     name='apply_pr',
@@ -12,18 +14,9 @@ setup(
     description='Apply Pull Requests from GitHub',
     entry_points='''
         [console_scripts]
-        apply_pr=apply_pr.cli:apply_pr
-        get_deploys=apply_pr.cli:get_deploys
-        status_pr=apply_pr.cli:status_pr
-        check_prs_status=apply_pr.cli:check_prs_status
-        create_changelog=apply_pr.cli:create_changelog
+        sastre=apply_pr.cli:tailor
+        tailor=apply_pr.cli:tailor
+        apply_pr=apply_pr.cli:deprecated
     ''',
-    install_requires=[
-        'fabric<2.0',
-        'osconf',
-        'python-slugify',
-        'requests',
-        'click',
-        'tqdm'
-    ]
+    install_requires=INSTALL_REQUIRES
 )
