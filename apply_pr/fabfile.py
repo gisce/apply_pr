@@ -16,6 +16,7 @@ from fabric.exceptions import NetworkError
 from fabric import colors
 from osconf import config_from_environment
 from slugify import slugify
+from os.path import isdir
 import requests
 import StringIO
 from collections import OrderedDict
@@ -247,27 +248,57 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 @task
 def export_patches_from_git(from_commit, to_commit, pr_number):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
-    local("mkdir -p deploy/patches/%s" % pr_number)
+    deploy_path = "deploy/patches/{}".format(pr_number)
+    if isdir(deploy_path):
+        local("rm -r {}".format(deploy_path))
+    local("mkdir -p {}".format(deploy_path))
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
 
 
 @task
-def export_patches_from_github(
-    pr_number, from_commit=None, owner='gisce', repository='erp'
-):
+def get_commits(pr_number, owner='gisce', repository='erp'):
+    # Pagination documentation: https://developer.github.com/v3/#pagination
+    def parse_github_links_header(links_header):
+        ret_links = {}
+        full_links = links_header.split(',')
+        for link in full_links:
+            link_url, link_ref = link.split(';')
+            link_url = link_url.strip()[1:-1]
+            link_ref = link_ref.split('=')[-1].strip()[1:-1]
+            ret_links[link_ref] = link_url
+        return ret_links
+
+    logger.info('Getting commits from GitHub')
+    headers = {'Authorization': 'token %s' % github_config()['token']}
     repo = github_config(
         repository='{}/{}'.format(owner, repository))['repository']
-    patch_folder = "deploy/patches/%s" % pr_number
-    local("mkdir -p %s" % patch_folder)
-    logger.info('Exporting patches from GitHub')
-    headers = {'Authorization': 'token %s' % github_config()['token']}
-    # Pagination documentation: https://developer.github.com/v3/#pagination
     url = "https://api.github.com/repos/%s/pulls/%s/commits?per_page=100" \
           % (repo, pr_number)
     r = requests.get(url, headers=headers)
     commits = json.loads(r.text)
+    if 'link' in r.headers:
+        url_page = 1
+        links = parse_github_links_header(r.headers['link'])
+        while links['last'][-1] != str(url_page):
+            url_page += 1
+            tqdm.write(colors.yellow(
+                '    - Getting extra commits page {}'.format(url_page)))
+            r = requests.get(links['next'], headers=headers)
+            commits += json.loads(r.text)
+    return commits
+
+
+@task
+def export_patches_from_github(
+    pr_number, from_commit=None, owner='gisce', repository='erp'
+):
+    patch_folder = "deploy/patches/%s" % pr_number
+    local("mkdir -p %s" % patch_folder)
+    tqdm.write('Exporting patches from GitHub')
+    headers = {'Authorization': 'token %s' % github_config()['token']}
+    commits = get_commits(pr_number, owner=owner, repository=repository)
     patch_headers = headers.copy()
     patch_headers['Accept'] = 'application/vnd.github.patch'
     patch_number = 0
@@ -362,9 +393,19 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
         print("Deployment id: {id} to {description}".format(**deployment))
         statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
         for status in reversed(statusses):
-            print("  - {state} by {creator[login]} on {created_at}".format(
-                **status
-            ))
+            status_text = (
+                "  - {state} by {creator[login]} on {created_at}".format(
+                    **status
+                )
+            )
+            formatter = str
+            if status['state'] == 'pending':
+                formatter = colors.yellow
+            elif status['state'] in ['error', 'failure']:
+                formatter = colors.red
+            elif status['state'] == 'success':
+                formatter = colors.green
+            print(formatter(status_text))
 
 
 @task
@@ -429,6 +470,17 @@ def check_is_rolling(src='/home/erp/src', repository='erp'):
 
 
 @task
+def check_am_session(src='/home/erp/src', repository='erp'):
+    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+        with cd("{}/{}".format(src, repository)):
+            res = sudo("ls .git/rebase-apply")
+            if not res.return_code:
+                message = "The repository is in the middle of an am session!"
+                tqdm.write(colors.red(message))
+                abort(message)
+
+
+@task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
@@ -436,6 +488,7 @@ def apply_pr(
     try:
         check_it_exists(src=src, repository=repository)
         check_is_rolling(src=src, repository=repository)
+        check_am_session(src=src, repository=repository)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
@@ -471,6 +524,7 @@ def apply_pr(
         else:
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
+        check_am_session(src=src, repository=repository)
         apply_remote_patches(pr_number,
                              from_,
                              src=src,
@@ -504,15 +558,9 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
 @task
 def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp'):
     result = OrderedDict()
-    repo = github_config(
-        repository='{}/{}'.format(owner, repository))['repository']
-    logger.info('Exporting patches from GitHub')
-    headers = {'Authorization': 'token %s' % github_config()['token']}
-    # Pagination documentation: https://developer.github.com/v3/#pagination
-    base_url = 'https://api.github.com/repos/{0}/pulls/{1}/commits?per_page=100'
-    url = base_url.format(repo, pr_number)
-    r = requests.get(url, headers=headers)
-    commits = json.loads(r.text)
+    logger.info('Getting patches from GitHub')
+    commits = get_commits(
+        pr_number=pr_number, owner=owner, repository=repository)
 
     with settings(warn_only=True, sudo_user='erp'):
         with cd("{}/{}".format(src, repository)):

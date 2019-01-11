@@ -203,5 +203,26 @@ def create_changelog(milestone, issues, changelog_path, owner, repository):
             repository=repository)
 
 
+def deploy_ids(pr, owner, repository):
+    from apply_pr import fabfile
+
+    configure_logging()
+
+    get_deploys_task = WrappedCallableTask(fabfile.get_deploys)
+    execute(get_deploys_task, pr,
+            owner=owner, repository=repository)
+
+
+@tailor.command(name='get_deploys')
+@click.option('--pr', help='Pull request to check', required=True)
+@click.option('--owner', help='GitHub owner name',
+              default='gisce', show_default=True)
+@click.option('--repository', help='GitHub repository name',
+              default='erp', show_default=True)
+@add_options(github_options)
+def get_deploys(**kwargs):
+    deploy_ids(**kwargs)
+
+
 if __name__ == '__main__':
     tailor()
