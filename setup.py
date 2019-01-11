@@ -16,6 +16,7 @@ setup(
         [console_scripts]
         sastre=apply_pr.cli:tailor
         tailor=apply_pr.cli:tailor
+        apply_pr=apply_pr.cli:deprecated
     ''',
     install_requires=INSTALL_REQUIRES
 )
