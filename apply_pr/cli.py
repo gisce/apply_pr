@@ -18,6 +18,7 @@ github_options = [
 deployment_options = github_options + [
     click.option("--host", help="Host to apply", required=True),
     click.option('--src', help='Remote src path',  default='/home/erp/src', show_default=True),
+    click.option('--sudo_user', help='Sudo user from the host', default='erp', show_default=True),
 ]
 
 apply_pr_options = deployment_options + [
@@ -62,7 +63,7 @@ def tailor(**kwargs):
 
 def apply_pr(
     pr, host, from_number, from_commit, force_hostname,
-    owner, repository, src
+    owner, repository, src, sudo_user
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -82,6 +83,8 @@ def apply_pr(
     :type repository:       str
     :param src:             Source path to the repository directory
     :type src:              str
+    :param sudo_user:       Remote user with sudo
+    :type sudo_user         str
     """
     from apply_pr import fabfile
     url = urlparse(host)
@@ -94,7 +97,7 @@ def apply_pr(
     execute(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository,
-        host=url.hostname
+        host=url.hostname, sudo_user=sudo_user
     )
 
 
