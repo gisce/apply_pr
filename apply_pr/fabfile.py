@@ -483,12 +483,12 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 @task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
-        hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
+        hostname=False, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'
 ):
     try:
-        check_it_exists(src=src, repository=repository)
-        check_is_rolling(src=src, repository=repository)
-        check_am_session(src=src, repository=repository)
+        check_it_exists(src=src, repository=repository, sudo_user=sudo_user)
+        check_is_rolling(src=src, repository=repository, sudo_user=sudo_user)
+        check_am_session(src=src, repository=repository, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
