@@ -62,8 +62,8 @@ def tailor(**kwargs):
 
 
 def apply_pr(
-    pr, host, from_number, from_commit, force_hostname,
-    owner, repository, src, sudo_user
+    pr, host, from_number=0, from_commit=None, force_hostname=False,
+    owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp'
 ):
     """
     Deploy a PR into a remote server via Fabric
