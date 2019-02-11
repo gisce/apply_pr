@@ -92,12 +92,11 @@ def apply_pr(
     env.password = url.password
 
     configure_logging()
-
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
     execute(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
-        src=src, owner=owner, repository=repository,
-        host=url.hostname, sudo_user=sudo_user
+        src=src, owner=owner, repository=repository, sudo_user=sudo_user,
+        host='{}:{}'.format(url.hostname, (url.port or 22))
     )
 
 
@@ -129,8 +128,10 @@ def check_pr(pr, force, src, owner, repository, host):
     configure_logging()
 
     check_pr_task = WrappedCallableTask(fabfile.check_pr)
-    execute(check_pr_task, pr,
-            src=src, owner=owner, repository=repository, host=url.hostname)
+    execute(
+        check_pr_task, pr, src=src, owner=owner, repository=repository,
+        host='{}:{}'.format(url.hostname, (url.port or 22))
+    )
 
 
 def status_pr(deploy_id, status, owner, repository):
