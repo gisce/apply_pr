@@ -87,7 +87,7 @@ def apply_pr(
     :type sudo_user         str
     """
     from apply_pr import fabfile
-    url = urlparse(host)
+    url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
 
@@ -121,7 +121,7 @@ def check_pr(pr, force, src, owner, repository, host):
         exit()
     from apply_pr import fabfile
 
-    url = urlparse(host)
+    url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
 
