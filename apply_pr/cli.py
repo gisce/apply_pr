@@ -87,6 +87,8 @@ def apply_pr(
     :type sudo_user         str
     """
     from apply_pr import fabfile
+    if 'ssh' not in host and host[:2] != '//':
+        host = '//{}'.format(host)
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
