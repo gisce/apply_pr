@@ -49,7 +49,7 @@ if config.get('logging'):
 
 @task
 def upload_patches(
-    pr_number, from_commit=None, src='/home/erp/src', repository='erp'
+    pr_number, from_commit=None, src='/home/erp/src', repository='erp', sudo_user='erp'
 ):
     temp_dir = '/tmp/%s' % pr_number
     remote_dir = '{}/{}/patches/{}'.format(
@@ -76,12 +76,12 @@ def upload_patches(
             temp_dir, use_sudo=True)
         remote_patch_file = '{}/{}'.format(temp_dir, patch)
         sudo("mv %s %s" % (remote_patch_file, remote_dir))
-    sudo("chown -R erp: %s" % remote_dir)
+    sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
 
 
 @task
 def apply_remote_patches(
-    name, from_patch=0, src='/home/erp/src', repository='erp'
+    name, from_patch=0, src='/home/erp/src', repository='erp', sudo_user='erp'
 ):
     from_commit = None
     if isinstance(from_patch, basestring) and len(from_patch) == 40:
@@ -91,7 +91,7 @@ def apply_remote_patches(
     else:
         from_patch = int(from_patch)
         logger.info('Applying from number {}'.format(from_patch))
-    with settings(warn_only=True, sudo_user='erp'):
+    with settings(warn_only=True, sudo_user=sudo_user):
         with hide('output'):
             patches = sudo("ls -1 {}/{}/patches/{}/*.patch".format(
                 src, repository, name
@@ -450,8 +450,8 @@ def export_patches_pr(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def check_it_exists(src='/home/erp/src', repository='erp'):
-    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+def check_it_exists(src='/home/erp/src', repository='erp', sudo_user='erp'):
+    with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
         res = sudo("ls {}/{}".format(src, repository))
         if res.return_code:
             message = "The repository does not exist or cannot be found"
@@ -460,8 +460,8 @@ def check_it_exists(src='/home/erp/src', repository='erp'):
 
 
 @task
-def check_is_rolling(src='/home/erp/src', repository='erp'):
-    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+def check_is_rolling(src='/home/erp/src', repository='erp', sudo_user='erp'):
+    with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
         with cd("{}/{}".format(src, repository)):
             res = sudo("git branch | grep '* rolling'")
             if res.return_code:
@@ -471,8 +471,8 @@ def check_is_rolling(src='/home/erp/src', repository='erp'):
 
 
 @task
-def check_am_session(src='/home/erp/src', repository='erp'):
-    with settings(hide('everything'), sudo_user='erp', warn_only=True):
+def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
+    with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
         with cd("{}/{}".format(src, repository)):
             res = sudo("ls .git/rebase-apply")
             if not res.return_code:
@@ -484,12 +484,12 @@ def check_am_session(src='/home/erp/src', repository='erp'):
 @task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
-        hostname=False, src='/home/erp/src', owner='gisce', repository='erp'
+        hostname=False, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'
 ):
     try:
-        check_it_exists(src=src, repository=repository)
-        check_is_rolling(src=src, repository=repository)
-        check_am_session(src=src, repository=repository)
+        check_it_exists(src=src, repository=repository, sudo_user=sudo_user)
+        check_is_rolling(src=src, repository=repository, sudo_user=sudo_user)
+        check_am_session(src=src, repository=repository, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
@@ -500,7 +500,7 @@ def apply_pr(
                                repository=repository)
     if not deploy_id:
         tqdm.write(colors.magenta(
-            'No deploy id! you must mark the pr manually'
+            'No deploy id! you must mark the Pull Request manually'
         ))
     try:
         mark_deploy_status(deploy_id,
@@ -519,7 +519,8 @@ def apply_pr(
             upload_patches(pr_number,
                            from_commit,
                            src=src,
-                           repository=repository)
+                           repository=repository,
+                           sudo_user=sudo_user)
         if from_commit:
             from_ = from_commit
         else:
@@ -529,7 +530,8 @@ def apply_pr(
         apply_remote_patches(pr_number,
                              from_,
                              src=src,
-                             repository=repository)
+                             repository=repository,
+                             sudo_user=sudo_user)
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
@@ -557,13 +559,13 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
                        repository=repository)
 
 @task
-def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp'):
+def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
     result = OrderedDict()
     logger.info('Getting patches from GitHub')
     commits = get_commits(
         pr_number=pr_number, owner=owner, repository=repository)
 
-    with settings(warn_only=True, sudo_user='erp'):
+    with settings(warn_only=True, sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             for commit in commits:
                 fh = StringIO.StringIO()
@@ -636,21 +638,22 @@ def prs_status(
         except Exception as e:
             # logger.error('Error PR {0}'.format(pr_number))
             err_msg = colors.red(
-                'Error PR {0} : https://github.com/gisce/erp/pull/{0}'.format(
-                    pr_number
+                'Error PR {0} : https://github.com/{}/{}/pull/{}'.format(
+                    owner, repository, pr_number
                 )
             )
             tqdm.write(err_msg)
             ERRORS.append(err_msg)
-    for milestone in PRS.keys():
+    for milestone in sorted(PRS.keys()):
         print('\nMilestone {}'.format(milestone))
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))
     for prmsg in ERRORS:
             print('ERR\t{}'.format(prmsg))
     if version:
+        TO_APPLY = sorted(list(set(TO_APPLY)))
         print(colors.yellow(
-            '\nNot Included: "{}"\n'.format(' '.join(sorted(TO_APPLY)))
+            '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
     return True
 
