@@ -147,6 +147,11 @@ class GitApplier(object):
                 import time
                 time.sleep(0.1)
         if result.failed:
+            if "git config --global user.email" in result:
+                logger.error(
+                    "Need to configure git for this user\n"
+                )
+                raise GitHubException(result)
             try:
                 raise WiggleException
             except WiggleException:
