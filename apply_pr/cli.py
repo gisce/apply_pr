@@ -63,7 +63,8 @@ def tailor(**kwargs):
 
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
-    owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp'
+    owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
+    auto_exit=False
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -95,11 +96,12 @@ def apply_pr(
 
     configure_logging()
     apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    execute(
+    result = execute(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository, sudo_user=sudo_user,
-        host='{}:{}'.format(url.hostname, (url.port or 22))
+        host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit
     )
+    return result
 
 
 @tailor.command(name="deploy")

@@ -78,7 +78,8 @@ def upload_patches(
 
 @task
 def apply_remote_patches(
-    name, from_patch=0, src='/home/erp/src', repository='erp', sudo_user='erp'
+    name, from_patch=0, src='/home/erp/src', repository='erp', sudo_user='erp',
+    auto_exit=True
 ):
     from_commit = None
     if isinstance(from_patch, basestring) and len(from_patch) == 40:
@@ -112,12 +113,16 @@ def apply_remote_patches(
         if patches_to_apply:
             with cd("{}/{}".format(src, repository)):
                 git_am = GitApplier(patches_to_apply)
+                if auto_exit:
+                    git_am.auto_exit = True
                 git_am.run()
 
 
 class WiggleException(Exception):
     pass
 
+class GitHubException(Exception):
+    pass
 
 class GitApplier(object):
     def __init__(self, patches):
@@ -125,6 +130,7 @@ class GitApplier(object):
         self.pbar = tqdm(total=len(patches), desc='   Applying')
         self.clean = 0
         self.forced = 0
+        self.auto_exit = 0
 
     def run(self):
         result = sudo(
@@ -141,18 +147,28 @@ class GitApplier(object):
                 import time
                 time.sleep(0.1)
         if result.failed:
+            if "git config --global user.email" in result:
+                logger.error(
+                    "Need to configure git for this user\n"
+                )
+                raise GitHubException(result)
             try:
                 raise WiggleException
             except WiggleException:
+                if self.auto_exit:
+                    sudo("git am --abort")
+                    logger.error('Aborting deploy and go back')
+                    raise GitHubException
                 prompt("Manual resolve...")
             finally:
-                to_commit = sudo(
-                    "git diff --cached --name-only --no-color", pty=False
-                )
-                if to_commit:
-                    self.resolve()
-                else:
-                    self.skip()
+                if not self.auto_exit:
+                    to_commit = sudo(
+                        "git diff --cached --name-only --no-color", pty=False
+                    )
+                    if to_commit:
+                        self.resolve()
+                    else:
+                        self.skip()
 
     def skip(self):
         self.catch_result(sudo("git am --skip"))
@@ -483,7 +499,8 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 @task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
-        hostname=False, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'
+        hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
+        sudo_user='erp', auto_exit=False
 ):
     try:
         check_it_exists(src=src, repository=repository, sudo_user=sudo_user)
@@ -526,16 +543,20 @@ def apply_pr(
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
         check_am_session(src=src, repository=repository)
-        apply_remote_patches(pr_number,
-                             from_,
-                             src=src,
-                             repository=repository,
-                             sudo_user=sudo_user)
+        result = apply_remote_patches(
+            pr_number,
+            from_,
+            src=src,
+            repository=repository,
+            sudo_user=sudo_user,
+            auto_exit=auto_exit,
+        )
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
                            repository=repository)
         tqdm.write(colors.green("Deploy success \U0001F680"))
+        return True
     except Exception as e:
         logger.error(e)
         mark_deploy_status(deploy_id,
@@ -544,6 +565,7 @@ def apply_pr(
                            owner=owner,
                            repository=repository)
         tqdm.write(colors.red("Deploy failure \U0001F680"))
+        return False
 
 
 @task
