@@ -44,17 +44,6 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-@click.command('apply_pr')
-@add_options(apply_pr_options)
-def deprecated(**kwargs):
-    print(colors.red(
-        "WARNING: 'apply_pr' command has been deprecated and\n"
-        "  it will be deleted in future versions"
-    ))
-    print(colors.yellow("> Use 'sastre deploy' instead"))
-    return apply_pr(**kwargs)
-
-
 @click.group(name='tailor')
 def tailor(**kwargs):
     from apply_pr.version import check_version
@@ -109,33 +98,6 @@ def apply_pr(
 def deploy(**kwargs):
     """Deploy a PR into a remote server via Fabric"""
     return apply_pr(**kwargs)
-
-
-@tailor.command(name='check_pr')
-@click.option('--pr', help='Pull request to check', required=True)
-@click.option('--force/--no-force', default=False,
-              help='Forces the usage of this command')
-@add_options(deployment_options)
-def check_pr(pr, force, src, owner, repository, host):
-    """DEPRECATED - Check for applied commits on PR"""
-    print(colors.red("This option has been deprecated as it doesn't work"))
-    if not force:
-        print(colors.red(
-            "Use '--force' to force the usage for this command (as is)"))
-        exit()
-    from apply_pr import fabfile
-
-    url = urlparse(host, scheme='ssh')
-    env.user = url.username
-    env.password = url.password
-
-    configure_logging()
-
-    check_pr_task = WrappedCallableTask(fabfile.check_pr)
-    execute(
-        check_pr_task, pr, src=src, owner=owner, repository=repository,
-        host='{}:{}'.format(url.hostname, (url.port or 22))
-    )
 
 
 def status_pr(deploy_id, status, owner, repository):
