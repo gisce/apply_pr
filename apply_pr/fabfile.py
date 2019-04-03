@@ -580,40 +580,6 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
                        repository=repository)
 
 @task
-def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
-    result = OrderedDict()
-    logger.info('Getting patches from GitHub')
-    commits = get_commits(
-        pr_number=pr_number, owner=owner, repository=repository)
-
-    with settings(warn_only=True, sudo_user=sudo_user):
-        with cd("{}/{}".format(src, repository)):
-            for commit in commits:
-                fh = StringIO.StringIO()
-                commit_message = (
-                    commit['commit']['message']
-                ).replace('"', '\\"')
-                git_command_template = 'git --no-pager log -F --grep="{0}" -n1'
-                git_command = git_command_template.format(commit_message)
-                with settings(output_prefix=False):
-                    run(git_command, stdout=fh, shell=False)
-                out = fh.getvalue()
-                if len(out) > 0:
-                    result[commit['commit']['message']] = True
-                else:
-                    result[commit['commit']['message']] = False
-    for index, commit in enumerate(result, 1):
-        num_commit = str(index).zfill(4)
-        first_line = commit.splitlines()[0]
-        if result[commit]:
-            message = '{0} - {1} : \xE2\x9C\x85 Aplicat'
-        else:
-            message = '{0} - {1} : \xE2\x9D\x8C No aplicat'
-        print(message.format(num_commit, first_line))
-
-    return result
-
-@task
 def prs_status(
         prs, separator=' ', owner='gisce', repository='erp', version=False):
     headers = {
