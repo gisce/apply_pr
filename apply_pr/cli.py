@@ -150,9 +150,9 @@ def status_pr(deploy_id, status, owner, repository):
 
 
 @tailor.command(name='status')
-@click.option('--deploy-id', help='Deploy id to mark')
-@click.option('--status', type=click.Choice(['success', 'error', 'failure']),
-              help='Status to set', default='success', show_default=True)
+@click.argument('deploy-id')
+@click.argument('status', type=click.Choice(['success', 'error', 'failure']),
+                default='success')
 @add_options(github_options)
 def status(**kwargs):
     """Update the status of a deploy into GitHub"""
