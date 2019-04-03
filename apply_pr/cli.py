@@ -55,8 +55,8 @@ def deprecated(**kwargs):
     return apply_pr(**kwargs)
 
 
-@click.group(name='tailor')
-def tailor(**kwargs):
+@click.group(name='sastre')
+def sastre(**kwargs):
     from apply_pr.version import check_version
     check_version()
 
@@ -104,14 +104,14 @@ def apply_pr(
     return result
 
 
-@tailor.command(name="deploy")
+@sastre.command(name="deploy")
 @add_options(apply_pr_options)
 def deploy(**kwargs):
     """Deploy a PR into a remote server via Fabric"""
     return apply_pr(**kwargs)
 
 
-@tailor.command(name='check_pr')
+@sastre.command(name='check_pr')
 @click.option('--pr', help='Pull request to check', required=True)
 @click.option('--force/--no-force', default=False,
               help='Forces the usage of this command')
@@ -149,7 +149,7 @@ def status_pr(deploy_id, status, owner, repository):
             owner=owner, repository=repository)
 
 
-@tailor.command(name='status')
+@sastre.command(name='status')
 @click.argument('deploy-id')
 @click.argument('status', type=click.Choice(['success', 'error', 'failure']),
                 default='success')
@@ -174,7 +174,7 @@ def check_prs_status(prs, separator, version, owner, repository):
             version=version)
 
 
-@tailor.command(name='check_prs')
+@sastre.command(name='check_prs')
 @click.option('--prs', required=True,
               help='List of pull request separated by space (by default)')
 @click.option('--separator',
@@ -188,7 +188,7 @@ def check_prs(**kwargs):
     check_prs_status(**kwargs)
 
 
-@tailor.command(name='create_changelog')
+@sastre.command(name='create_changelog')
 @click.option('-m', '--milestone', required=True,
               help='Milestone to get the issues from (version)')
 @click.option('--issues/--no-issues', default=False, show_default=True,
@@ -221,7 +221,7 @@ def deploy_ids(pr, owner, repository):
             owner=owner, repository=repository)
 
 
-@tailor.command(name='get_deploys')
+@sastre.command(name='get_deploys')
 @click.argument('PR')
 @add_options(github_options)
 def get_deploys(**kwargs):
@@ -230,4 +230,4 @@ def get_deploys(**kwargs):
 
 
 if __name__ == '__main__':
-    tailor()
+    sastre()
