@@ -15,19 +15,44 @@ github_options = [
 
 ]
 
-deployment_options = github_options + [
+deployment_options = [
     click.option("--host", help="Host to apply", required=True),
     click.option('--src', help='Remote src path',  default='/home/erp/src', show_default=True),
     click.option('--sudo_user', help='Sudo user from the host', default='erp', show_default=True),
 ]
 
-apply_pr_options = deployment_options + [
+apply_pr_options = github_options + deployment_options + [
     click.option("--pr", help="Pull request to apply", required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
-    click.option("--force-hostname", help="Force hostname",  default=False)
+    click.option("--force-hostname", help="Force hostname",  default=False),
 ]
 
+status_options = github_options + [
+    click.argument('deploy-id'),
+    click.argument(
+        'status', type=click.Choice(['success', 'error', 'failure']),
+        default='success'),
+]
+
+check_prs_options = github_options + [
+    click.option('--prs', required=True,
+        help='List of pull request separated by space (by default)'),
+    click.option(
+        '--separator', help='Character separator of list by default is space',
+        default=' ', show_default=True),
+    click.option('--milestone',
+        help="Compare with milestone and show if included in prs"),
+]
+
+create_changelog_options = github_options + [
+    click.option('-m', '--milestone', required=True,
+        help='Milestone to get the issues from (version)'),
+    click.option('--issues/--no-issues', default=False, show_default=True,
+        help='Also get the data on the issues'),
+    click.option('--changelog_path', default='/tmp', show_default=True,
+        help='Path to drop the changelog file in'),
+]
 
 def add_options(options):
     def _add_options(func):
@@ -150,10 +175,7 @@ def status_pr(deploy_id, status, owner, repository):
 
 
 @sastre.command(name='status')
-@click.argument('deploy-id')
-@click.argument('status', type=click.Choice(['success', 'error', 'failure']),
-                default='success')
-@add_options(github_options)
+@add_options(status_options)
 def status(**kwargs):
     """Update the status of a deploy into GitHub"""
     status_pr(**kwargs)
@@ -175,27 +197,14 @@ def check_prs_status(prs, separator, version, owner, repository):
 
 
 @sastre.command(name='check_prs')
-@click.option('--prs', required=True,
-              help='List of pull request separated by space (by default)')
-@click.option('--separator',
-              help='Character separator of list by default is space',
-              default=' ', required=True, show_default=True)
-@click.option('--version',
-              help="Compare with milestone and show if included in prs")
-@add_options(github_options)
+@add_options(check_prs_options)
 def check_prs(**kwargs):
     """Check the status of the PRs for a set of PRs"""
     check_prs_status(**kwargs)
 
 
 @sastre.command(name='create_changelog')
-@click.option('-m', '--milestone', required=True,
-              help='Milestone to get the issues from (version)')
-@click.option('--issues/--no-issues', default=False, show_default=True,
-              help='Also get the data on the issues')
-@click.option('--changelog_path', default='/tmp', show_default=True,
-              help='Path to drop the changelog file in')
-@add_options(github_options)
+@add_options(create_changelog_options)
 def create_changelog(milestone, issues, changelog_path, owner, repository):
     """Create a changelog for the given milestone"""
     from apply_pr import fabfile
