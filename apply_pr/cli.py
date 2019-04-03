@@ -222,13 +222,10 @@ def deploy_ids(pr, owner, repository):
 
 
 @tailor.command(name='get_deploys')
-@click.option('--pr', help='Pull request to check', required=True)
-@click.option('--owner', help='GitHub owner name',
-              default='gisce', show_default=True)
-@click.option('--repository', help='GitHub repository name',
-              default='erp', show_default=True)
+@click.argument('PR')
 @add_options(github_options)
 def get_deploys(**kwargs):
+    """Get deploy IDs and their status for a given PR number"""
     deploy_ids(**kwargs)
 
 
