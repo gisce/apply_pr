@@ -44,17 +44,6 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-@click.command('apply_pr')
-@add_options(apply_pr_options)
-def deprecated(**kwargs):
-    print(colors.red(
-        "WARNING: 'apply_pr' command has been deprecated and\n"
-        "  it will be deleted in future versions"
-    ))
-    print(colors.yellow("> Use 'sastre deploy' instead"))
-    return apply_pr(**kwargs)
-
-
 @click.group(name='tailor')
 def tailor(**kwargs):
     from apply_pr.version import check_version
