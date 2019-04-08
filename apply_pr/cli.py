@@ -229,6 +229,7 @@ def deploy_ids(pr, owner, repository):
               default='erp', show_default=True)
 @add_options(github_options)
 def get_deploys(**kwargs):
+    """Get the id and status of the deploys from pr"""
     deploy_ids(**kwargs)
 
 
