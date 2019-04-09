@@ -660,7 +660,7 @@ def prs_status(
         except Exception as e:
             # logger.error('Error PR {0}'.format(pr_number))
             err_msg = colors.red(
-                'Error PR {0} : https://github.com/{}/{}/pull/{}'.format(
+                'Error PR {2} : https://github.com/{0}/{1}/pull/{2}'.format(
                     owner, repository, pr_number
                 )
             )
