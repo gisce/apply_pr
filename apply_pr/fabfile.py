@@ -49,11 +49,11 @@ if config.get('logging'):
 
 @task
 def upload_patches(
-    pr_number, from_commit=None, src='/home/erp/src', repository='erp', sudo_user='erp'
+    pr_number, from_commit=None, src='/home/erp/src/erp', sudo_user='erp'
 ):
     temp_dir = '/tmp/%s' % pr_number
-    remote_dir = '{}/{}/patches/{}'.format(
-        src, repository, pr_number
+    remote_dir = '{}/patches/{}'.format(
+        src, pr_number
     )
     sudo("mkdir -p %s" % remote_dir)
     sudo("mkdir -p %s" % temp_dir)
@@ -81,8 +81,7 @@ def upload_patches(
 
 @task
 def apply_remote_patches(
-    name, from_patch=0, src='/home/erp/src', repository='erp', sudo_user='erp',
-    auto_exit=True
+    name, from_patch=0, src='/home/erp/src/erp', sudo_user='erp', auto_exit=True
 ):
     from_commit = None
     if isinstance(from_patch, basestring) and len(from_patch) == 40:
@@ -94,8 +93,8 @@ def apply_remote_patches(
         logger.info('Applying from number {}'.format(from_patch))
     with settings(warn_only=True, sudo_user=sudo_user):
         with hide('output'):
-            patches = sudo("ls -1 {}/{}/patches/{}/*.patch".format(
-                src, repository, name
+            patches = sudo("ls -1 {}/patches/{}/*.patch".format(
+                src, name
             ))
         patches_to_apply = []
         for patch in patches.split():
@@ -114,7 +113,7 @@ def apply_remote_patches(
             patches_to_apply.append(patch)
 
         if patches_to_apply:
-            with cd("{}/{}".format(src, repository)):
+            with cd("{}".format(src)):
                 git_am = GitApplier(patches_to_apply)
                 if auto_exit:
                     git_am.auto_exit = True
@@ -466,9 +465,9 @@ def export_patches_pr(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def check_it_exists(src='/home/erp/src', repository='erp', sudo_user='erp'):
+def check_it_exists(src='/home/erp/src/erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
-        res = sudo("ls {}/{}".format(src, repository))
+        res = sudo("ls {}".format(src))
         if res.return_code:
             message = "The repository does not exist or cannot be found"
             tqdm.write(colors.red(message))
@@ -476,9 +475,9 @@ def check_it_exists(src='/home/erp/src', repository='erp', sudo_user='erp'):
 
 
 @task
-def check_is_rolling(src='/home/erp/src', repository='erp', sudo_user='erp'):
+def check_is_rolling(src='/home/erp/src/erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
-        with cd("{}/{}".format(src, repository)):
+        with cd("{}".format(src)):
             res = sudo("git branch | grep '* rolling'")
             if res.return_code:
                 message = "The repository is not in rolling mode"
@@ -487,9 +486,9 @@ def check_is_rolling(src='/home/erp/src', repository='erp', sudo_user='erp'):
 
 
 @task
-def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
+def check_am_session(src='/home/erp/src/erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
-        with cd("{}/{}".format(src, repository)):
+        with cd("{}".format(src)):
             res = sudo("ls .git/rebase-apply")
             if not res.return_code:
                 message = "The repository is in the middle of an am session!"
@@ -500,13 +499,15 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 @task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
-        hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
+        hostname=False, src=False, owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False
 ):
+    if not src:
+        src = '/home/erp/src/{}'.format(repository)
     try:
-        check_it_exists(src=src, repository=repository, sudo_user=sudo_user)
-        check_is_rolling(src=src, repository=repository, sudo_user=sudo_user)
-        check_am_session(src=src, repository=repository, sudo_user=sudo_user)
+        check_it_exists(src=src, sudo_user=sudo_user)
+        check_is_rolling(src=src, sudo_user=sudo_user)
+        check_am_session(src=src, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
@@ -536,19 +537,17 @@ def apply_pr(
             upload_patches(pr_number,
                            from_commit,
                            src=src,
-                           repository=repository,
                            sudo_user=sudo_user)
         if from_commit:
             from_ = from_commit
         else:
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
-        check_am_session(src=src, repository=repository)
+        check_am_session(src=src, sudo_user=sudo_user)
         result = apply_remote_patches(
-            pr_number,
-            from_,
+            name=pr_number,
+            from_patch=from_,
             src=src,
-            repository=repository,
             sudo_user=sudo_user,
             auto_exit=auto_exit,
         )
