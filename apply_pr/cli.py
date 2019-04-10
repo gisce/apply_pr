@@ -17,7 +17,7 @@ github_options = [
 
 deployment_options = github_options + [
     click.option("--host", help="Host to apply", required=True),
-    click.option('--src', help='Remote src path',  default='/home/erp/src', show_default=True),
+    click.option('--src', help='Remote repository src path',  default=False),
     click.option('--sudo_user', help='Sudo user from the host', default='erp', show_default=True),
 ]
 
@@ -63,7 +63,7 @@ def tailor(**kwargs):
 
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
-    owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
+    owner='gisce', repository='erp', src=False, sudo_user='erp',
     auto_exit=False
 ):
     """
