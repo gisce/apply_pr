@@ -14,8 +14,7 @@ setup(
     description='Apply Pull Requests from GitHub',
     entry_points='''
         [console_scripts]
-        sastre=apply_pr.cli:tailor
-        tailor=apply_pr.cli:tailor
+        sastre=apply_pr.cli:sastre
         apply_pr=apply_pr.cli:deprecated
     ''',
     install_requires=INSTALL_REQUIRES
