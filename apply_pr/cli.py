@@ -41,7 +41,7 @@ check_prs_options = github_options + [
     click.option(
         '--separator', help='Character separator of list by default is space',
         default=' ', show_default=True),
-    click.option('--milestone',
+    click.option('--version',
         help="Compare with milestone and show if included in prs"),
 ]
 
