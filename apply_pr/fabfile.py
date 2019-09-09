@@ -646,7 +646,8 @@ def prs_status(
                 )
             )
             if version:
-                if milestone <= version:
+                from packaging import version as vsn
+                if vsn.parse(milestone) <= vsn.parse(version):
                     if state_pr != 'closed':
                         message = colors.yellow(message)
                         TO_APPLY.append(str(pr_number))

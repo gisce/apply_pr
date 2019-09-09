@@ -4,3 +4,4 @@ python-slugify
 requests
 click
 tqdm
+packaging
