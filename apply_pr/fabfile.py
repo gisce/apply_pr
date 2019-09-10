@@ -25,6 +25,7 @@ import StringIO
 from collections import OrderedDict
 
 from tqdm import tqdm
+from packaging import version as vsn
 
 
 logger = logging.getLogger(__name__)
@@ -646,7 +647,7 @@ def prs_status(
                 )
             )
             if version:
-                if milestone <= version:
+                if vsn.parse(milestone) <= vsn.parse(version):
                     if state_pr != 'closed':
                         message = colors.yellow(message)
                         TO_APPLY.append(str(pr_number))
