@@ -752,7 +752,8 @@ def create_changelog(
     SKIP_LABELS = ['custom', 'to be merged','deployed', 'traduccions']
     GAS_LABEL = 'gas'
     ELEC_LABEL = u'eléctrico'
-    TYPE_LABELS = [ELEC_LABEL, GAS_LABEL]
+    OFICINA_VIRTUAL = 'oficinavirtual'
+    TYPE_LABELS = [ELEC_LABEL, GAS_LABEL, OFICINA_VIRTUAL]
     TOP_FEATURE = u':fire: top feature'
     COMMON_KEY = u'COMÚN'
     def get_label(label_keys, labels, skip_custom=False):
@@ -864,6 +865,7 @@ def create_changelog(
     pulls_sep = {
         GAS_LABEL: copy.deepcopy(pulls_desc),
         ELEC_LABEL: copy.deepcopy(pulls_desc),
+        OFICINA_VIRTUAL: copy.deepcopy(pulls_desc),
         'others': copy.deepcopy(pulls_desc)
     }
     label_keys = pulls_desc.keys()
