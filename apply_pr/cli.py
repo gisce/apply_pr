@@ -26,6 +26,9 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
+    click.option("--force-name", help="Force host repository name",  default=False),
+    click.option("--auto-exit", help="Execute git am --abort when fail",
+                 type=click.BOOL, default=False),
 ]
 
 status_options = github_options + [
