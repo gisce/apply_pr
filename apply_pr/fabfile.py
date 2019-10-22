@@ -407,6 +407,7 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
     )
     r = requests.get(url, headers=headers)
     res = json.loads(r.text)
+    res = sorted(res, key=lambda x: x['created_at'])
     for deployment in res:
         print("Deployment id: {id} to {description}".format(**deployment))
         statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
