@@ -503,12 +503,16 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
-        sudo_user='erp', auto_exit=False
+        sudo_user='erp', auto_exit=False, force_name=None,
 ):
+    if force_name:
+        repository_name = force_name
+    else:
+        repository_name = repository
     try:
-        check_it_exists(src=src, repository=repository, sudo_user=sudo_user)
-        check_is_rolling(src=src, repository=repository, sudo_user=sudo_user)
-        check_am_session(src=src, repository=repository, sudo_user=sudo_user)
+        check_it_exists(src=src, repository=repository_name, sudo_user=sudo_user)
+        check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
+        check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
@@ -538,19 +542,19 @@ def apply_pr(
             upload_patches(pr_number,
                            from_commit,
                            src=src,
-                           repository=repository,
+                           repository=repository_name,
                            sudo_user=sudo_user)
         if from_commit:
             from_ = from_commit
         else:
             from_ = from_number
         tqdm.write(colors.yellow("Applying patches \U0001F648"))
-        check_am_session(src=src, repository=repository)
+        check_am_session(src=src, repository=repository_name)
         result = apply_remote_patches(
             pr_number,
             from_,
             src=src,
-            repository=repository,
+            repository=repository_name,
             sudo_user=sudo_user,
             auto_exit=auto_exit,
         )

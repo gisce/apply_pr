@@ -26,6 +26,9 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
+    click.option("--force-name", help="Force host repository name",  default=False),
+    click.option("--auto-exit", help="Execute git am --abort when fail",
+                 type=click.BOOL, default=False),
 ]
 
 status_options = github_options + [
@@ -89,7 +92,7 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=False
+    auto_exit=False, force_name=None
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -124,7 +127,8 @@ def apply_pr(
     result = execute(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository, sudo_user=sudo_user,
-        host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit
+        host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
+        force_name=force_name
     )
     return result
 
