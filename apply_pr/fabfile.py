@@ -430,7 +430,7 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp'
+    owner='gisce', repository='erp', pr_number=None
 ):
     if not deploy_id:
         return
@@ -448,6 +448,13 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
+    if state == 'success' and pr_number:
+        url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
+            owner, repository, pr_number
+        )
+        payload = {'labels': ['deployed']}
+        r = requests.post(url, data=json.dumps(payload), headers=headers)
+        logger.info('Add Label to deploy on PR {}'.format(pr_number))
 
 
 @task
@@ -561,7 +568,8 @@ def apply_pr(
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           pr_number=pr_number)
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
@@ -584,7 +592,8 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
     mark_deploy_status(deploy_id,
                        state='success',
                        owner=owner,
-                       repository=repository)
+                       repository=repository,
+                       pr_number=pr_number)
 
 @task
 def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
