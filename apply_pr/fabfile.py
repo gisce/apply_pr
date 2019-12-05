@@ -277,6 +277,9 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
 
 @task
 def get_commits(pr_number, owner='gisce', repository='erp'):
+    def is_merge_commit(commit):
+        return bool(len(commit['parents']) > 1)
+
     # Pagination documentation: https://developer.github.com/v3/#pagination
     def parse_github_links_header(links_header):
         ret_links = {}
@@ -305,6 +308,10 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
                 '    - Getting extra commits page {}'.format(url_page)))
             r = requests.get(links['next'], headers=headers)
             commits += json.loads(r.text)
+
+    for commit in commits:
+        commit['commit']['is_merge_commit'] = is_merge_commit(commit)
+
     return commits
 
 
@@ -324,7 +331,7 @@ def export_patches_from_github(
         pr_number, from_commit and '@{}'.format(from_commit) or ''
     ))
     for commit in tqdm(commits, desc='Downloading'):
-        if commit['commit']['message'].lower().startswith('merge'):
+        if commit['commit']['is_merge_commit']:
             logger.info('Skipping merge commit {sha}: {message}'.format(
                 sha=commit['sha'], message=commit['commit']['message']
             ))
