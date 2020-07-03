@@ -692,6 +692,13 @@ def prs_status(
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
+        for x in TO_APPLY:
+            print(
+                 'curl -H \'Authorization: token {token}\' '
+                 '-H "Accept: application/vnd.github.v3.diff" '
+                 'https://api.github.com/repos/gisce/erp/pulls/{pr} --output {pr}.diff'.format(
+                       pr=x, token=github_config()['token'])
+            )
     return True
 
 @task
