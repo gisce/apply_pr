@@ -144,12 +144,12 @@ class GitApplier(object):
         self.catch_result(result)
 
     def catch_result(self, result):
-        for line in result.split('\n'):
+        for line in result.decode('utf-8').split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
         if result.failed:
-            if "git config --global user.email" in result:
+            if "git config --global user.email" in result.decode('utf-8'):
                 logger.error(
                     "Need to configure git for this user\n"
                 )
