@@ -344,7 +344,7 @@ def export_patches_from_github(
         filename = '%04i-%s.patch' % (patch_number, message)
         with open(os.path.join(patch_folder, filename), 'w') as patch:
             logger.info('Exporting patch %s.' % filename)
-            patch.write(r.text)
+            patch.write(r.text.encode('utf-8'))
 
 
 @task
