@@ -57,6 +57,11 @@ create_changelog_options = github_options + [
         help='Path to drop the changelog file in'),
 ]
 
+mark_deployed_options = github_options + [
+    click.option("--pr", help="Pull request to apply", required=True),
+    click.option("--force-hostname", help="Force hostname",  default=False),
+]
+
 def add_options(options):
     def _add_options(func):
         for option in reversed(options):
@@ -183,6 +188,20 @@ def status_pr(deploy_id, status, owner, repository):
 def status(**kwargs):
     """Update the status of a deploy into GitHub"""
     status_pr(**kwargs)
+
+
+@sastre.command(name='mark_deployed')
+@add_options(mark_deployed_options)
+def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
+    from apply_pr import fabfile
+
+    configure_logging()
+
+    mark_deployed_task = WrappedCallableTask(fabfile.mark_deployed)
+    execute(mark_deployed_task, pr, hostname=force_hostname, owner=owner, repository=repository)
+    click.echo(colors.green(u"Marking PR#{} as deployed success! \U0001F680".format(
+        pr
+    )))
 
 
 def check_prs_status(prs, separator, version, owner, repository):
