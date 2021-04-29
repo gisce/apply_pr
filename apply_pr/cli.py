@@ -29,6 +29,8 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--force-name", help="Force host repository name",  default=False),
     click.option("--auto-exit", help="Execute git am --abort when fail",
                  type=click.BOOL, default=True),
+    click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
+                is_flag=True, default=False)
 ]
 
 status_options = github_options + [
@@ -97,7 +99,7 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=True, force_name=None
+    auto_exit=True, force_name=None, re_deploy=False
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -133,7 +135,7 @@ def apply_pr(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository, sudo_user=sudo_user,
         host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-        force_name=force_name
+        force_name=force_name, re_deploy=re_deploy
     )
     return result
 
@@ -248,7 +250,7 @@ def deploy_ids(pr, owner, repository):
 
     configure_logging()
 
-    get_deploys_task = WrappedCallableTask(fabfile.get_deploys)
+    get_deploys_task = WrappedCallableTask(fabfile.print_deploys)
     execute(get_deploys_task, pr,
             owner=owner, repository=repository)
 

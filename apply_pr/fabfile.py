@@ -390,8 +390,7 @@ def mark_to_deploy(
     return deploy_id
 
 
-@task
-def get_deploys(pr_number, owner='gisce', repository='erp'):
+def get_deploys(pr_number, owner='gisce', repository='erp', commit=None):
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
@@ -401,17 +400,41 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
     )
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
-    commit = pull['head']['sha']
+    if commit is None:
+        commit = pull['head']['sha']
     url = "https://api.github.com/repos/{}/{}/deployments?ref={}".format(
         owner, repository, commit
     )
     r = requests.get(url, headers=headers)
     res = json.loads(r.text)
     res = sorted(res, key=lambda x: x['created_at'])
+    deploys = []
     for deployment in res:
-        print("Deployment id: {id} to {description}".format(**deployment))
         statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
-        for status in reversed(statusses):
+        deployment['status'] = statusses
+        deploys.append(deployment)
+    return deploys
+
+
+@task
+def get_last_deploy(pr_number, hostname=False, owner='gisce', repository='erp'):
+    if not hostname:
+        hostname = run("uname -n")
+    commits =  [x['sha'] for x in reversed(get_commits(pr_number, owner, repository))]
+    logger.info('Finding last success deploy...')
+    for idx, commit in tqdm(enumerate(commits), total=len(commits)):
+        for deploy in get_deploys(pr_number, owner, repository, commit):
+            if deploy['payload']['host'] == hostname:
+                if deploy['status'][0]['state'] == 'success':
+                    return deploy, commits[idx - 1]
+    return None, None
+
+
+@task
+def print_deploys(pr_number, owner='gisce', repository='erp'):
+    for deployment in get_deploys(pr_number, owner, repository):
+        print("Deployment id: {id} to {description}".format(**deployment))
+        for status in deployment['status']:
             status_text = (
                 "  - {state} by {creator[login]} on {created_at}".format(
                     **status
@@ -510,7 +533,7 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
-        sudo_user='erp', auto_exit=False, force_name=None,
+        sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False
 ):
     if force_name:
         repository_name = force_name
@@ -524,6 +547,16 @@ def apply_pr(
         logger.error('Error connecting to specified host')
         logger.error(e)
         raise
+    if re_deploy:
+        tqdm.write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
+        last_deploy, from_commit = get_last_deploy(pr_number, hostname, owner, repository)
+        if last_deploy:
+            tqdm.write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
+        else:
+            tqdm.write(colors.blue('\U0001F62F Not found...'))
+        resp = raw_input('Deploy from {}? (y/n): '.format(from_commit or '0'))
+        if resp.upper() != 'Y':
+            exit(-1)
     deploy_id = mark_to_deploy(pr_number,
                                hostname=hostname,
                                owner=owner,
