@@ -552,6 +552,9 @@ def apply_pr(
         last_deploy, from_commit = get_last_deploy(pr_number, hostname, owner, repository)
         if last_deploy:
             tqdm.write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
+            if last_deploy['sha'] == from_commit:
+                tqdm.write(colors.red('\U000026D4 No commits to deploy...'))
+                exit(-1)
         else:
             tqdm.write(colors.blue('\U0001F62F Not found...'))
         resp = raw_input('Deploy from {}? (y/n): '.format(from_commit or '0'))
