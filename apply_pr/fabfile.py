@@ -417,6 +417,21 @@ def get_deploys(pr_number, owner='gisce', repository='erp', commit=None):
 
 
 @task
+def check_prs_deployed(prs_numbers, separator=' ',hostname=False, owner='gisce', repository='erp'):
+    prs_numbers = re.sub('{}+'.format(separator), separator, prs_numbers)
+    pr_list = prs_numbers.split(separator)
+    DEPLOYED = []
+    NOT_DEPLOYED = []
+    for pr_number in pr_list:
+        deployed, commit = get_last_deploy(pr_number, hostname=hostname, owner=owner, repository=repository)
+        if deployed:
+            DEPLOYED.append(pr_number)
+        else:
+            NOT_DEPLOYED.append(pr_number)
+    print('Deployed PRS {}'.format(DEPLOYED))
+    print('Not Deployed PRS {}'.format(NOT_DEPLOYED))
+
+@task
 def get_last_deploy(pr_number, hostname=False, owner='gisce', repository='erp'):
     if not hostname:
         hostname = run("uname -n")
