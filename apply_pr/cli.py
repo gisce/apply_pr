@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from urlparse import urlparse
 
 from fabric.tasks import execute, WrappedCallableTask
@@ -30,7 +31,9 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--auto-exit", help="Execute git am --abort when fail",
                  type=click.BOOL, default=True),
     click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
-                is_flag=True, default=False)
+                is_flag=True, default=False),
+    click.option("--as-diff", help="Apply pull request as unique diff",
+                 is_flag=True, default=False)
 ]
 
 status_options = github_options + [
@@ -99,7 +102,7 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=True, force_name=None, re_deploy=False
+    auto_exit=True, force_name=None, re_deploy=False, as_diff=False
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -122,6 +125,12 @@ def apply_pr(
     :param sudo_user:       Remote user with sudo
     :type sudo_user         str
     """
+    if re_deploy and as_diff:
+        click.echo(colors.red(
+            u"\U000026D4 ERROR: You can't use re-deploy and as-diff at the same time"
+        ))
+        sys.exit(1)
+
     from apply_pr import fabfile
     if 'ssh' not in host and host[:2] != '//':
         host = '//{}'.format(host)
@@ -135,7 +144,7 @@ def apply_pr(
         apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
         src=src, owner=owner, repository=repository, sudo_user=sudo_user,
         host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-        force_name=force_name, re_deploy=re_deploy
+        force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
     )
     return result
 

@@ -49,6 +49,19 @@ if config.get('logging'):
 
 
 @task
+def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
+    temp_dir = '/tmp/%s.diff' % pr_number
+    remote_dir = '{}/{}/patches/'.format(src, repository)
+    sudo("mkdir -p %s" % remote_dir)
+    diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
+    with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
+        logger.info('Uploading diff {}.diff'.format(pr_number))
+        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=True)
+    sudo("mv %s %s" % (temp_dir, diff_path))
+    sudo("chown {0}: {1}".format(sudo_user, diff_path))
+
+
+@task
 def upload_patches(
     pr_number, from_commit=None, src='/home/erp/src', repository='erp', sudo_user='erp'
 ):
@@ -78,6 +91,16 @@ def upload_patches(
         remote_patch_file = '{}/{}'.format(temp_dir, patch)
         sudo("mv %s %s" % (remote_patch_file, remote_dir))
     sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
+
+
+@task
+def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
+                      sudo_user='erp'
+):
+    with settings(sudo_user=sudo_user):
+        with cd("{}/{}".format(src, repository)):
+            diff_file = 'patches/{}.diff'.format(pr_number)
+            PatchApplier.apply(diff_file)
 
 
 @task
@@ -127,6 +150,35 @@ class WiggleException(Exception):
 
 class GitHubException(Exception):
     pass
+
+
+class PatchApplier(object):
+
+    @staticmethod
+    def apply(diff, stash=True, reject=False, message=None):
+        if message is None:
+            message = 'Apply {}'.format(diff)
+        if stash:
+            print(colors.yellow('Stashing all before...'))
+            sudo("git stash -u")
+        try:
+            if reject:
+                reject = '  --reject'
+            else:
+                reject = ''
+            print(colors.green('Applying diff {}'.format(diff)))
+            sudo(
+                "git apply {}{}".format(diff, reject),
+            )
+            print(colors.green('Commit!'))
+            sudo(
+                'git add -A && git commit -m "{}"'.format(message),
+            )
+        finally:
+            if stash:
+                print(colors.yellow('Unstashing...'))
+                sudo("git stash pop")
+
 
 class GitApplier(object):
     def __init__(self, patches):
@@ -306,6 +358,22 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
             r = requests.get(links['next'], headers=headers)
             commits += json.loads(r.text)
     return commits
+
+
+@task
+def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+    diff_path = "deploy/patches/{}.diff".format(pr_number)
+    tqdm.write('Exporting diff from Github')
+    headers = {
+        'Authorization': 'token %s' % github_config()['token'],
+        'Accept': 'application/vnd.github.v3.diff'
+    }
+    url = 'https://api.github.com/repos/{owner}/{repository}/pulls/{pr_number}'.format(
+        owner=owner, repository=repository, pr_number=pr_number
+    )
+    r = requests.get(url, headers=headers)
+    with open(diff_path, 'w') as f:
+        f.write(r.text.encode('utf-8'))
 
 
 @task
@@ -548,7 +616,8 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
-        sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False
+        sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
+        as_diff=False
 ):
     if force_name:
         repository_name = force_name
@@ -592,30 +661,45 @@ def apply_pr(
             deploy_id
         )))
         if not skip_upload:
-            pass
-            export_patches_from_github(pr_number,
-                                       from_commit,
-                                       owner=owner,
-                                       repository=repository)
-            upload_patches(pr_number,
-                           from_commit,
-                           src=src,
-                           repository=repository_name,
-                           sudo_user=sudo_user)
-        if from_commit:
-            from_ = from_commit
+            if as_diff:
+                export_diff_from_github(
+                    pr_number, owner=owner, repository=repository
+                )
+                upload_diff(
+                    pr_number, src=src, repository=repository,
+                    sudo_user=sudo_user
+                )
+            else:
+                export_patches_from_github(pr_number,
+                                           from_commit,
+                                           owner=owner,
+                                           repository=repository)
+                upload_patches(pr_number,
+                               from_commit,
+                               src=src,
+                               repository=repository_name,
+                               sudo_user=sudo_user)
+        if as_diff:
+            tqdm.write(colors.yellow("Applying diff \U0001F648"))
+            check_am_session(src=src, repository=repository_name)
+            apply_remote_diff(
+                pr_number, src=src, repository=repository, sudo_user=sudo_user
+            )
         else:
-            from_ = from_number
-        tqdm.write(colors.yellow("Applying patches \U0001F648"))
-        check_am_session(src=src, repository=repository_name)
-        result = apply_remote_patches(
-            pr_number,
-            from_,
-            src=src,
-            repository=repository_name,
-            sudo_user=sudo_user,
-            auto_exit=auto_exit,
-        )
+            if from_commit:
+                from_ = from_commit
+            else:
+                from_ = from_number
+            tqdm.write(colors.yellow("Applying patches \U0001F648"))
+            check_am_session(src=src, repository=repository_name)
+            result = apply_remote_patches(
+                pr_number,
+                from_,
+                src=src,
+                repository=repository_name,
+                sudo_user=sudo_user,
+                auto_exit=auto_exit,
+            )
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
