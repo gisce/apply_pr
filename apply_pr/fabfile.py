@@ -156,11 +156,16 @@ class PatchApplier(object):
 
     @staticmethod
     def apply(diff, stash=True, reject=False, message=None):
+        need_stash = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om")
+        stashed = False
+        if stash and not need_stash:
+            stash = False
         if message is None:
             message = 'Apply {}'.format(diff)
         if stash:
             print(colors.yellow('Stashing all before...'))
             sudo("git stash -u")
+            stashed = True
         try:
             if reject:
                 reject = '  --reject'
@@ -174,8 +179,11 @@ class PatchApplier(object):
             sudo(
                 'git add -A && git commit -m "{}"'.format(message),
             )
+        except:
+            print(colors.red('\U000026D4 Error applying diff'))
+            raise
         finally:
-            if stash:
+            if stash and stashed:
                 print(colors.yellow('Unstashing...'))
                 sudo("git stash pop")
 
