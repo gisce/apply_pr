@@ -227,11 +227,6 @@ def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
 def check_deployed(prs, separator, owner, repository, host=False, force_hostname=False):
     """Check PRS is deployed on Server"""
     from apply_pr import fabfile
-    if host:
-        hostname = run("uname -n")
-    else:
-        hostname = force_hostname
-
     log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
     logging.basicConfig(level=log_level)
 
@@ -240,7 +235,8 @@ def check_deployed(prs, separator, owner, repository, host=False, force_hostname
             owner=owner,
             repository=repository,
             separator=separator,
-            force_hostname=hostname,)
+            force_hostname=force_hostname,
+            host=host)
 
 
 @sastre.command(name='check_prs_deployed')
