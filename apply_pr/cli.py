@@ -53,6 +53,16 @@ check_prs_options = github_options + [
         help="Compare with milestone and show if included in prs"),
 ]
 
+check_prs_deployed_options = github_options + [
+    click.option('--prs', required=True,
+        help='List of pull request separated by space (by default)'),
+    click.option("--force-hostname", help="Force hostname",  default=False),
+    click.option(
+        '--separator', help='Character separator of list by default is space',
+        default=' ', show_default=True),
+    click.option("--host", help="Host to apply", required=True),
+]
+
 create_changelog_options = github_options + [
     click.option('-m', '--milestone', required=True,
         help='Milestone to get the issues from (version)'),
@@ -213,6 +223,31 @@ def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
     click.echo(colors.green(u"Marking PR#{} as deployed success! \U0001F680".format(
         pr
     )))
+
+def check_deployed(prs, separator, owner, repository, host=False, force_hostname=False):
+    """Check PRS is deployed on Server"""
+    from apply_pr import fabfile
+    if host:
+        hostname = run("uname -n")
+    else:
+        hostname = force_hostname
+
+    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper())
+    logging.basicConfig(level=log_level)
+
+    check_prs_deployed = WrappedCallableTask(fabfile.check_prs_deployed)
+    execute(check_prs_deployed, prs,
+            owner=owner,
+            repository=repository,
+            separator=separator,
+            force_hostname=hostname,)
+
+
+@sastre.command(name='check_prs_deployed')
+@add_options(check_prs_deployed_options)
+def check_prs_deployed(**kwargs):
+    """Check the status of the PRs for a set of PRs"""
+    check_deployed(**kwargs)
 
 
 def check_prs_status(prs, separator, version, owner, repository):
