@@ -201,9 +201,7 @@ def status(**kwargs):
     status_pr(**kwargs)
 
 
-@sastre.command(name='mark_deployed')
-@add_options(mark_deployed_options)
-def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
+def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='erp'):
     from apply_pr import fabfile
 
     configure_logging()
@@ -213,6 +211,12 @@ def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
     click.echo(colors.green(u"Marking PR#{} as deployed success! \U0001F680".format(
         pr
     )))
+
+
+@sastre.command(name='mark_deployed')
+@add_options(mark_deployed_options)
+def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
+    return mark_deployed_backend(pr, force_hostname=force_hostname, owner=owner, repository=repository)
 
 
 def check_prs_status(prs, separator, version, owner, repository):
