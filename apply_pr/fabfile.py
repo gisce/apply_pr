@@ -478,7 +478,7 @@ def get_deploys(pr_number, owner='gisce', repository='erp', commit=None):
     pull = json.loads(r.text)
     if commit is None:
         commit = pull['head']['sha']
-    url = "https://api.github.com/repos/{}/{}/deployments?ref={}".format(
+    url = "https://api.github.com/repos/{}/{}/deployments?sha={}".format(
         owner, repository, commit
     )
     r = requests.get(url, headers=headers)
