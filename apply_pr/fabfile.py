@@ -186,6 +186,11 @@ class PatchApplier(object):
             if stash and stashed:
                 print(colors.yellow('Unstashing...'))
                 sudo("git stash pop")
+                error_on_pop = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -u")
+                if error_on_pop:
+                    sudo("git reset --merge")
+                    print(colors.red('\U000026D4 Error on stash pop. Keeping stash...'))
+                    raise
 
 
 class GitApplier(object):
