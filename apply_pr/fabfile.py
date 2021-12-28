@@ -327,9 +327,13 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 def export_patches_from_git(from_commit, to_commit, pr_number):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
     deploy_path = "deploy/patches/{}".format(pr_number)
-    if isdir(deploy_path):
-        local("rm -r {}".format(deploy_path))
-    local("mkdir -p {}".format(deploy_path))
+    try:
+        if isdir(deploy_path):
+            local("rm -r {}".format(deploy_path))
+        local("mkdir -p {}".format(deploy_path))
+    except BaseException as e:
+        logger.error('Permission denied to write {} in the current directory'.format(deploy_path))
+        raise
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
@@ -389,7 +393,11 @@ def export_patches_from_github(
     pr_number, from_commit=None, owner='gisce', repository='erp'
 ):
     patch_folder = "deploy/patches/%s" % pr_number
-    local("mkdir -p %s" % patch_folder)
+    try:
+        local("mkdir -p %s" % patch_folder)
+    except BaseException as e:
+        logger.error('Permission denied to write {} in the current directory'.format(patch_folder))
+        raise
     tqdm.write('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
     commits = get_commits(pr_number, owner=owner, repository=repository)
@@ -558,7 +566,11 @@ def mark_deploy_status(
 
 @task
 def export_patches_pr(pr_number, owner='gisce', repository='erp'):
-    local("mkdir -p deploy/patches/%s" % pr_number)
+    try:
+        local("mkdir -p deploy/patches/%s" % pr_number)
+    except BaseException as e:
+        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(patch_folder))
+        raise
     from_commit, to_commit, branch = find_from_to_commits(
         pr_number, owner=owner, repository=repository
     )
