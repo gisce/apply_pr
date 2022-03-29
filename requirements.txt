@@ -1,6 +1,6 @@
 fabric<2.0
 osconf
-python-slugify
+python-slugify<6
 requests
 click
 tqdm
