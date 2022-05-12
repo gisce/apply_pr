@@ -23,7 +23,7 @@ deployment_options = [
 ]
 
 apply_pr_options = github_options + deployment_options + [
-    click.option("--pr", help="Pull request to apply", required=True),
+    click.option("--pr", help="Pull request to apply", default='none',required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
@@ -33,7 +33,8 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
                 is_flag=True, default=False),
     click.option("--as-diff", help="Apply pull request as unique diff",
-                 is_flag=True, default=False)
+                 is_flag=True, default=False),
+    click.option("--prs", help="Pull request to apply", default=''),
 ]
 
 status_options = github_options + [
@@ -102,7 +103,7 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=True, force_name=None, re_deploy=False, as_diff=False
+    auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs=''
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -137,16 +138,32 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
-
-    configure_logging()
-    apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    result = execute(
-        apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
-        src=src, owner=owner, repository=repository, sudo_user=sudo_user,
-        host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-        force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
-    )
-    return result
+    if not prs and pr == 'none':
+        click.echo(colors.red(
+            u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
+        ))
+        sys.exit(1)
+    if prs:
+        deploy_prs = prs.split(' ')
+    else:
+        deploy_prs = [pr]
+    results = []
+    for pr_dep in deploy_prs:
+        click.echo(colors.yellow(
+            u"https://github.com/{owner}/{repository}/pull/{pr_number}".format(
+                owner=owner, repository=repository, pr_number=pr_dep
+            )
+        ))
+        configure_logging()
+        apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
+        result = execute(
+            apply_pr_task, pr_dep, from_number, from_commit, hostname=force_hostname,
+            src=src, owner=owner, repository=repository, sudo_user=sudo_user,
+            host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
+            force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
+        )
+        results.append(result)
+    return results
 
 
 @sastre.command(name="deploy")
