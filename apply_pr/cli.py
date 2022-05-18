@@ -23,7 +23,7 @@ deployment_options = [
 ]
 
 apply_pr_options = github_options + deployment_options + [
-    click.option("--pr", help="Pull request to apply", default='none',required=True),
+    click.option("--pr", help="Pull request to apply", default='',required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
@@ -138,7 +138,7 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
-    if not prs and pr == 'none':
+    if not prs and not pr:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
         ))
