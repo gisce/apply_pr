@@ -148,6 +148,7 @@ def apply_pr(
     else:
         deploy_prs = [pr]
     results = []
+    failed_prs = []
     for pr_dep in deploy_prs:
         click.echo(colors.yellow(
             u"https://github.com/{owner}/{repository}/pull/{pr_number}".format(
@@ -162,7 +163,14 @@ def apply_pr(
             host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
             force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
         )
+        result_list = list(result.items())
+        if not result_list[0][1]:
+            failed_prs.append(pr_dep)
         results.append(result)
+    if failed_prs:
+        click.echo(colors.red(
+            u"Failed PRS :{}".format(' '.join(failed_prs))
+        ))
     return results
 
 
