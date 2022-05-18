@@ -51,8 +51,12 @@ if config.get('logging'):
 @task
 def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
     temp_dir = '/tmp/%s.diff' % pr_number
-    remote_dir = '{}/{}/patches/'.format(src, repository)
+    remote_dir = '{}/{}/patches/{}'.format(src, repository, pr_number)
+    remote_dir_bkp = '{}/{}/patches/{}/backup'.format(src, repository, pr_number)
     sudo("mkdir -p %s" % remote_dir)
+    sudo("mkdir -p %s" % remote_dir_bkp)
+    with cd('{}/{}'.format(src, repository)):
+        sudo("git diff > {}/pre_{}.diff".format(remote_dir_bkp, pr_number))
     diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
     with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
         logger.info('Uploading diff {}.diff'.format(pr_number))
@@ -99,7 +103,8 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
 ):
     with settings(sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
-            diff_file = 'patches/{}.diff'.format(pr_number)
+            diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
+                pr_number=pr_number)
             PatchApplier.apply(diff_file)
 
 
