@@ -55,8 +55,9 @@ def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp
     remote_dir_bkp = '{}/{}/patches/{}/backup'.format(src, repository, pr_number)
     sudo("mkdir -p %s" % remote_dir)
     sudo("mkdir -p %s" % remote_dir_bkp)
+    sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
     with cd('{}/{}'.format(src, repository)):
-        sudo("git diff > {}/pre_{}.diff".format(remote_dir_bkp, pr_number))
+        sudo("git diff > {}/pre_{}.diff".format(remote_dir_bkp, pr_number), user=sudo_user)
     diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
     with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
         logger.info('Uploading diff {}.diff'.format(pr_number))
