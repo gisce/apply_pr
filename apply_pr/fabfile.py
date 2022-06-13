@@ -193,7 +193,7 @@ class PatchApplier(object):
                         colors.red(
                             "Manual resolve. "
                             "If nothing to commit, empty staged"
-                            " and unstaged changes...")
+                            " and unstaged changes. Press Enter to continue.")
                     )
             else:
                 sudo(
