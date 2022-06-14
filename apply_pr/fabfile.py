@@ -945,7 +945,7 @@ def create_changelog(
         return (message)
 
     def print_item_detail(item, key=None):
-        body = item['body']
+        body = item['body'] or ''
         body = re.sub('^# ', '#### ', body).strip()
         body = re.sub('\n# ', '\n#### ', body).strip()
         body = re.sub('^## ', '#### ', body).strip()
