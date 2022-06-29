@@ -179,6 +179,9 @@ class PatchApplier(object):
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
             if reject:
+                from fabric.api import run, env, prefix
+                old_prefix = env.sudo_prefix
+                env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
                 try:
                     sudo(
                         "git apply {}{}".format(diff, reject),
@@ -186,8 +189,8 @@ class PatchApplier(object):
                 except:
                     print(colors.yellow('Some rejects ...'))
                 rej = sudo(
-                    "git status | grep rej;echo yes"
-                )
+                    "git status | grep rej;echo yes", user='erp'
+                    )
                 if rej != 'yes':
                     prompt(
                         colors.red(
@@ -209,6 +212,7 @@ class PatchApplier(object):
                 )
             else:
                 print(colors.green('Nothing to commit! Continue'))
+            env.sudo_prefix = old_prefix
         except Exception as e:
             print(colors.red('\U000026D4 Error applying diff'))
             raise
