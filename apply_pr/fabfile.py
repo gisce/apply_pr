@@ -47,7 +47,7 @@ config = apply_pr_config()
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
 
-DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE'}
+DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
 @task
 def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
