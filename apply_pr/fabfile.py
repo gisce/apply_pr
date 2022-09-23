@@ -47,6 +47,7 @@ config = apply_pr_config()
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
 
+DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE'}
 
 @task
 def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
@@ -543,7 +544,7 @@ def print_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None
+    owner='gisce', repository='erp', pr_number=None, environment='pre'
 ):
     if not deploy_id:
         return
@@ -561,11 +562,11 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
-    if state == 'success' and pr_number:
+    if state == 'success' and pr_number and environment is not None:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
             owner, repository, pr_number
         )
-        payload = {'labels': ['deployed']}
+        payload = {'labels': [DEPLOYED[environment]]}
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         logger.info('Add Label to deploy on PR {}'.format(pr_number))
 
@@ -628,7 +629,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False
+        as_diff=False, environment='pro'
 ):
     if force_name:
         repository_name = force_name
@@ -667,7 +668,8 @@ def apply_pr(
         mark_deploy_status(deploy_id,
                            state='pending',
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           environment=environment)
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
@@ -730,7 +732,7 @@ def apply_pr(
 
 
 @task
-def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
+def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp', environment='pre'):
     deploy_id = mark_to_deploy(pr_number,
                                hostname=hostname,
                                owner=owner,
@@ -739,7 +741,8 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
                        state='success',
                        owner=owner,
                        repository=repository,
-                       pr_number=pr_number)
+                       pr_number=pr_number,
+                       environment=environment)
 
 @task
 def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
