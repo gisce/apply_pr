@@ -544,7 +544,7 @@ def print_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None, environment='pre'
+    owner='gisce', repository='erp', pr_number=None, environment='pro'
 ):
     if not deploy_id:
         return
