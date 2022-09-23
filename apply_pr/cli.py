@@ -65,6 +65,7 @@ create_changelog_options = github_options + [
 
 mark_deployed_options = github_options + [
     click.option("--pr", help="Pull request to apply", required=True),
+    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre']), required=True),
     click.option("--force-hostname", help="Force hostname",  default=False),
 ]
 
@@ -103,7 +104,8 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs=''
+    auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
+    environ='pre'
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -161,7 +163,8 @@ def apply_pr(
             apply_pr_task, pr_dep, from_number, from_commit, hostname=force_hostname,
             src=src, owner=owner, repository=repository, sudo_user=sudo_user,
             host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-            force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
+            force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
+            environment=environ
         )
         result_list = list(result.items())
         if not result_list[0][1]:
@@ -216,7 +219,7 @@ def status_pr(deploy_id, status, owner, repository):
 
     mark_deploy_status = WrappedCallableTask(fabfile.mark_deploy_status)
     execute(mark_deploy_status, deploy_id, status,
-            owner=owner, repository=repository)
+            owner=owner, repository=repository, environment=None)
 
 
 @sastre.command(name='status')
@@ -226,13 +229,13 @@ def status(**kwargs):
     status_pr(**kwargs)
 
 
-def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='erp'):
+def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='erp', environ='pre'):
     from apply_pr import fabfile
 
     configure_logging()
 
     mark_deployed_task = WrappedCallableTask(fabfile.mark_deployed)
-    execute(mark_deployed_task, pr, hostname=force_hostname, owner=owner, repository=repository)
+    execute(mark_deployed_task, pr, hostname=force_hostname, owner=owner, repository=repository, environment=environ)
     click.echo(colors.green(u"Marking PR#{} as deployed success! \U0001F680".format(
         pr
     )))
@@ -240,8 +243,9 @@ def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='e
 
 @sastre.command(name='mark_deployed')
 @add_options(mark_deployed_options)
-def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
-    return mark_deployed_backend(pr, force_hostname=force_hostname, owner=owner, repository=repository)
+def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp', environ='pre'):
+    return mark_deployed_backend(
+        pr, force_hostname=force_hostname, owner=owner, repository=repository, environ=environ)
 
 
 def check_prs_status(prs, separator, version, owner, repository):
