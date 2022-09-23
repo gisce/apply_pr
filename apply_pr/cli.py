@@ -24,6 +24,7 @@ deployment_options = [
 
 apply_pr_options = github_options + deployment_options + [
     click.option("--pr", help="Pull request to apply", default='',required=True),
+    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
@@ -65,7 +66,7 @@ create_changelog_options = github_options + [
 
 mark_deployed_options = github_options + [
     click.option("--pr", help="Pull request to apply", required=True),
-    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre']), required=True),
+    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--force-hostname", help="Force hostname",  default=False),
 ]
 
