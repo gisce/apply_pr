@@ -36,6 +36,7 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--as-diff", help="Apply pull request as unique diff",
                  is_flag=True, default=False),
     click.option("--prs", help="Pull request to apply", default=''),
+    click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
 ]
 
 status_options = github_options + [
@@ -106,7 +107,7 @@ def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
-    environ='pre'
+    environ='pre', reject=False
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -165,7 +166,7 @@ def apply_pr(
             src=src, owner=owner, repository=repository, sudo_user=sudo_user,
             host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
             force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
-            environment=environ
+            environment=environ, reject=reject
         )
         result_list = list(result.items())
         if not result_list[0][1]:
