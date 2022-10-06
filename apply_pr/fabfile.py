@@ -47,6 +47,7 @@ config = apply_pr_config()
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
 
+DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
 @task
 def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
@@ -100,13 +101,13 @@ def upload_patches(
 
 @task
 def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
-                      sudo_user='erp'
+                      sudo_user='erp', reject=False
 ):
     with settings(sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            PatchApplier.apply(diff_file)
+            PatchApplier.apply(diff_file, reject=reject)
 
 
 @task
@@ -178,14 +179,42 @@ class PatchApplier(object):
             else:
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
-            sudo(
-                "git apply {}{}".format(diff, reject),
+            if reject:
+                from fabric.api import run, env, prefix
+                old_prefix = env.sudo_prefix
+                env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
+                try:
+                    sudo(
+                        "git apply {}{}".format(diff, reject),
+                     )
+                except:
+                    print(colors.yellow('Some rejects ...'))
+                rej = sudo(
+                    "git status | grep rej;echo yes", user='erp'
+                    )
+                if rej != 'yes':
+                    prompt(
+                        colors.red(
+                            "Manual resolve. "
+                            "If nothing to commit, empty staged"
+                            " and unstaged changes. Press Enter to continue.")
+                    )
+            else:
+                sudo(
+                    "git apply {}{}".format(diff, reject),
+                )
+            empty_files = sudo(
+                'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
             )
-            print(colors.green('Commit!'))
-            sudo(
-                'git add -A && git commit -m "{}"'.format(message),
-            )
-        except:
+            if empty_files != 'empty':
+                print(colors.green('Commit!'))
+                sudo(
+                    'git add -A && git commit -m "{}"'.format(message),
+                )
+            else:
+                print(colors.green('Nothing to commit! Continue'))
+            env.sudo_prefix = old_prefix
+        except Exception as e:
             print(colors.red('\U000026D4 Error applying diff'))
             raise
         finally:
@@ -543,7 +572,7 @@ def print_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None
+    owner='gisce', repository='erp', pr_number=None, environment='pro'
 ):
     if not deploy_id:
         return
@@ -561,11 +590,11 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
-    if state == 'success' and pr_number:
+    if state == 'success' and pr_number and environment is not None:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
             owner, repository, pr_number
         )
-        payload = {'labels': ['deployed']}
+        payload = {'labels': [DEPLOYED[environment]]}
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         logger.info('Add Label to deploy on PR {}'.format(pr_number))
 
@@ -628,7 +657,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False
+        as_diff=False, environment='pro', reject=False
 ):
     if force_name:
         repository_name = force_name
@@ -667,7 +696,8 @@ def apply_pr(
         mark_deploy_status(deploy_id,
                            state='pending',
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           environment=environment)
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
@@ -694,7 +724,8 @@ def apply_pr(
             tqdm.write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             apply_remote_diff(
-                pr_number, src=src, repository=repository, sudo_user=sudo_user
+                pr_number, src=src, repository=repository, sudo_user=sudo_user,
+                reject=reject
             )
         else:
             if from_commit:
@@ -730,7 +761,7 @@ def apply_pr(
 
 
 @task
-def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
+def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp', environment='pre'):
     deploy_id = mark_to_deploy(pr_number,
                                hostname=hostname,
                                owner=owner,
@@ -739,7 +770,8 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
                        state='success',
                        owner=owner,
                        repository=repository,
-                       pr_number=pr_number)
+                       pr_number=pr_number,
+                       environment=environment)
 
 @task
 def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
