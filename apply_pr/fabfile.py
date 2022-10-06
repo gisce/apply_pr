@@ -101,13 +101,13 @@ def upload_patches(
 
 @task
 def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
-                      sudo_user='erp'
+                      sudo_user='erp', reject=False
 ):
     with settings(sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            PatchApplier.apply(diff_file)
+            PatchApplier.apply(diff_file, reject=reject)
 
 
 @task
@@ -179,14 +179,42 @@ class PatchApplier(object):
             else:
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
-            sudo(
-                "git apply {}{}".format(diff, reject),
+            if reject:
+                from fabric.api import run, env, prefix
+                old_prefix = env.sudo_prefix
+                env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
+                try:
+                    sudo(
+                        "git apply {}{}".format(diff, reject),
+                     )
+                except:
+                    print(colors.yellow('Some rejects ...'))
+                rej = sudo(
+                    "git status | grep rej;echo yes", user='erp'
+                    )
+                if rej != 'yes':
+                    prompt(
+                        colors.red(
+                            "Manual resolve. "
+                            "If nothing to commit, empty staged"
+                            " and unstaged changes. Press Enter to continue.")
+                    )
+            else:
+                sudo(
+                    "git apply {}{}".format(diff, reject),
+                )
+            empty_files = sudo(
+                'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
             )
-            print(colors.green('Commit!'))
-            sudo(
-                'git add -A && git commit -m "{}"'.format(message),
-            )
-        except:
+            if empty_files != 'empty':
+                print(colors.green('Commit!'))
+                sudo(
+                    'git add -A && git commit -m "{}"'.format(message),
+                )
+            else:
+                print(colors.green('Nothing to commit! Continue'))
+            env.sudo_prefix = old_prefix
+        except Exception as e:
             print(colors.red('\U000026D4 Error applying diff'))
             raise
         finally:
@@ -629,7 +657,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False, environment='pro'
+        as_diff=False, environment='pro', reject=False
 ):
     if force_name:
         repository_name = force_name
@@ -696,7 +724,8 @@ def apply_pr(
             tqdm.write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             apply_remote_diff(
-                pr_number, src=src, repository=repository, sudo_user=sudo_user
+                pr_number, src=src, repository=repository, sudo_user=sudo_user,
+                reject=reject
             )
         else:
             if from_commit:
