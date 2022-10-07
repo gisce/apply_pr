@@ -49,6 +49,19 @@ if config.get('logging'):
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
+
+def get_info_from_url(pr):
+    if pr.startswith('https://'):
+        vals = pr.split('/')
+        return {
+           'owner': vals[3],
+           'repository': vals[4],
+           'pr': vals[6]
+        }
+    else:
+        return {'pr': pr}
+
+
 @task
 def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
     temp_dir = '/tmp/%s.diff' % pr_number

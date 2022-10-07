@@ -183,6 +183,9 @@ def apply_pr(
 @add_options(apply_pr_options)
 def deploy(**kwargs):
     """Deploy a PR into a remote server via Fabric"""
+    if not isinstance(kwargs['pr'], (list, tuple)):
+        from apply_pr.fabfile import get_info_from_url
+        kwargs.update(get_info_from_url(kwargs['pr']))
     return apply_pr(**kwargs)
 
 
