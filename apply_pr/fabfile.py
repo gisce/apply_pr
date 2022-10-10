@@ -53,11 +53,14 @@ DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 def get_info_from_url(pr):
     if pr.startswith('https://'):
         vals = pr.split('/')
-        return {
+        info = {
            'owner': vals[3],
            'repository': vals[4],
            'pr': vals[6]
         }
+        if len(vals) == 9 and vals[7] == 'commits':
+            info['from_commit'] = vals[8]
+        return info
     else:
         return {'pr': pr}
 
