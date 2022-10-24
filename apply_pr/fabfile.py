@@ -11,7 +11,7 @@ import io
 import re
 import pprint
 
-from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
+from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task, env, prefix
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
 from fabric.state import output
@@ -195,10 +195,9 @@ class PatchApplier(object):
             else:
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
+            old_prefix = env.sudo_prefix
+            env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
             if reject:
-                from fabric.api import run, env, prefix
-                old_prefix = env.sudo_prefix
-                env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
                 try:
                     sudo(
                         "git apply {}{}".format(diff, reject),
