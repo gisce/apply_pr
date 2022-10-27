@@ -551,6 +551,25 @@ def get_deploys(pr_number, owner='gisce', repository='erp', commit=None):
 
 
 @task
+def check_prs_deployed(prs_numbers, separator=' ', force_hostname=False, owner='gisce', repository='erp'):
+    if not force_hostname:
+        hostname = run("uname -n")
+    else:
+        hostname=force_hostname
+    prs_numbers = re.sub('{}+'.format(separator), separator, prs_numbers)
+    pr_list = prs_numbers.split(separator)
+    DEPLOYED = []
+    NOT_DEPLOYED = []
+    for pr_number in pr_list:
+        deployed, commit = get_last_deploy(pr_number, hostname=hostname, owner=owner, repository=repository)
+        if deployed:
+            DEPLOYED.append(pr_number)
+        else:
+            NOT_DEPLOYED.append(pr_number)
+    print('Deployed PRS {}'.format(DEPLOYED))
+    print('Not Deployed PRS {}'.format(NOT_DEPLOYED))
+
+@task
 def get_last_deploy(pr_number, hostname=False, owner='gisce', repository='erp'):
     if not hostname:
         hostname = run("uname -n")
@@ -881,11 +900,11 @@ def prs_status(
     for prmsg in ERRORS:
             print('ERR\t{}'.format(prmsg))
     if version:
-        TO_APPLY = sorted(list(set(TO_APPLY)))
+        TO_APPLY = map(str,sorted(map(int, list(set(TO_APPLY)))))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
-        for x in TO_APPLY:
+        for x in sorted(map(int,TO_APPLY)):
             print(
                  'curl -H \'Authorization: token {token}\' '
                  '-H "Accept: application/vnd.github.v3.diff" '
