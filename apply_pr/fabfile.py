@@ -507,6 +507,7 @@ def mark_to_deploy(
         'environment': host,
         'description': host,
         'required_contexts': [],
+        'auto_inactive': False,
         'payload': {
             'host': host
         }
