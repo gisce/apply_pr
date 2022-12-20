@@ -1,8 +1,10 @@
 import logging
 import os
 import sys
-from urlparse import urlparse
-
+try:
+    from urlparse import urlparse
+except:
+    from urllib.parse import urlparse
 from fabric.tasks import execute, WrappedCallableTask
 from fabric.api import env
 from fabric import colors
