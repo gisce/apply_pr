@@ -37,6 +37,7 @@ apply_pr_options = github_options + deployment_options + [
                  is_flag=True, default=False),
     click.option("--prs", help="Pull request to apply", default=''),
     click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
+    click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False)
 ]
 
 status_options = github_options + [
@@ -107,28 +108,30 @@ def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
-    environ='pre', reject=False
+    environ='pre', reject=False, skip_rolling_check=False
 ):
     """
     Deploy a PR into a remote server via Fabric
-    :param pr:              Number of the PR to deploy
-    :type pr:               str
-    :param host:            Host to connect
-    :type host:             str
-    :param from_number:     Number of the commit to deploy from
-    :type from_number:      str
-    :param from_commit:     Hash of the commit to deploy from
-    :type from_commit:      str
-    :param force_hostname:  Hostname used in GitHub
-    :type force_hostname:   str
-    :param owner:           Owner of the repository of GitHub
-    :type owner:            str
-    :param repository:      Name of the repository of GitHub
-    :type repository:       str
-    :param src:             Source path to the repository directory
-    :type src:              str
-    :param sudo_user:       Remote user with sudo
-    :type sudo_user         str
+    :param pr:                  Number of the PR to deploy
+    :type pr:                   str
+    :param host:                Host to connect
+    :type host:                 str
+    :param from_number:         Number of the commit to deploy from
+    :type from_number:          str
+    :param from_commit:         Hash of the commit to deploy from
+    :type from_commit:          str
+    :param force_hostname:      Hostname used in GitHub
+    :type force_hostname:       str
+    :param owner:               Owner of the repository of GitHub
+    :type owner:                str
+    :param repository:          Name of the repository of GitHub
+    :type repository:           str
+    :param src:                 Source path to the repository directory
+    :type src:                  str
+    :param sudo_user:           Remote user with sudo
+    :type sudo_user             str
+    :param skip_rolling_check:  Allow to skip rolling mode check
+    :type sudo_user             bool
     """
     if re_deploy and as_diff:
         click.echo(colors.red(
@@ -166,7 +169,7 @@ def apply_pr(
             src=src, owner=owner, repository=repository, sudo_user=sudo_user,
             host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
             force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
-            environment=environ, reject=reject
+            environment=environ, reject=reject, skip_rolling_check=skip_rolling_check
         )
         result_list = list(result.items())
         if not result_list[0][1]:
