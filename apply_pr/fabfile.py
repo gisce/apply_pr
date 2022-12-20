@@ -672,7 +672,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False, environment='pro', reject=False
+        as_diff=False, environment='pro', reject=False, skip_rolling_check=False
 ):
     if force_name:
         repository_name = force_name
@@ -680,7 +680,8 @@ def apply_pr(
         repository_name = repository
     try:
         check_it_exists(src=src, repository=repository_name, sudo_user=sudo_user)
-        check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
+        if not skip_rolling_check:
+            check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
         check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
