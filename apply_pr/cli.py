@@ -37,7 +37,8 @@ apply_pr_options = github_options + deployment_options + [
                  is_flag=True, default=False),
     click.option("--prs", help="Pull request to apply", default=''),
     click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
-    click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False)
+    click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False),
+    click.option("--exit-code-failure", help="If enabled, process will terminate with exit 1 if had some error", is_flag=True, default=False),
 ]
 
 status_options = github_options + [
@@ -108,7 +109,7 @@ def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
-    environ='pre', reject=False, skip_rolling_check=False
+    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -179,6 +180,8 @@ def apply_pr(
         click.echo(colors.red(
             u"Failed PRS :{}".format(' '.join(failed_prs))
         ))
+        if exit_code_failure:
+            sys.exit(1)
     return results
 
 
