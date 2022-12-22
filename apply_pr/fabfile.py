@@ -587,7 +587,7 @@ def print_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None, environment='pro'
+    owner='gisce', repository='erp', pr_number=None, environment='pro', no_set_label=False
 ):
     if not deploy_id:
         return
@@ -605,7 +605,7 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
-    if state == 'success' and pr_number and environment is not None:
+    if state == 'success' and pr_number and environment is not None and not no_set_label:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
             owner, repository, pr_number
         )
@@ -672,7 +672,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False, environment='pro', reject=False, skip_rolling_check=False
+        as_diff=False, environment='pro', reject=False, skip_rolling_check=False, no_set_label=False
 ):
     if force_name:
         repository_name = force_name
@@ -713,7 +713,9 @@ def apply_pr(
                            state='pending',
                            owner=owner,
                            repository=repository,
-                           environment=environment)
+                           environment=environment,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
@@ -762,7 +764,9 @@ def apply_pr(
                            state='success',
                            owner=owner,
                            repository=repository,
-                           pr_number=pr_number)
+                           pr_number=pr_number,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
@@ -771,7 +775,9 @@ def apply_pr(
                            state='error',
                            description=e.message,
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.red("Deploy failure \U0001F680"))
         return False
 
