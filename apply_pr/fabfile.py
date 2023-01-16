@@ -26,6 +26,8 @@ from collections import OrderedDict
 
 from tqdm import tqdm
 from packaging import version as vsn
+from giscemultitools.githubutils.objects import GHAPIRequester
+from giscemultitools.githubutils.utils import GithubUtils
 
 
 logger = logging.getLogger(__name__)
@@ -841,35 +843,55 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    IN_PROJECTS = []
+    rep = GHAPIRequester('gisce', 'erp')
     for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
         try:
-            url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
-                owner, repository, pr_number
+            pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
+                rep.get_pull_request_projects_and_commits(int(pr_number))
             )
-            r = requests.get(url, headers=headers)
-            pull = json.loads(r.text)
+            pull = pull_info['pullRequest']
+            projects_info = pull_info['projectItems']
+            projects_show = ''
+            to_apply = '{}'.format(str(pr_number))
+            projects = ''
+            if projects_info:
+                projects = ','.join(
+                    [x['project_name'] for x in projects_info if x['card_state'] == 'Done']
+                )
+                if projects:
+                    projects_show = 'PROJECTS => {}'.format(projects)
+                    to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            merged_at = pull['merged_at']
-            milestone = pull['milestone']['title']
+            #merged_at = pull['merged_at']
+            milestone = pull['milestone']
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
-                ' milestone {milestone}'.format(
+                ' milestone {milestone}'
+                ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at=merged_at, milestone=milestone
+                    merged_at="", milestone=milestone,
+                    projects=projects_show
                 )
             )
             if version:
                 if vsn.parse(milestone) <= vsn.parse(version):
-                    if state_pr != 'closed':
+                    if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
-                        TO_APPLY.append(str(pr_number))
+                        if not projects:
+                            TO_APPLY.append(to_apply)
+                        else:
+                            IN_PROJECTS.append(to_apply)
                     else:
                         message = colors.green(message)
                 else:
                     message = colors.red(message)
-                    TO_APPLY.append(str(pr_number))
+                    if not projects:
+                        TO_APPLY.append(to_apply)
+                    else:
+                        IN_PROJECTS.append(to_apply)
             PRS.setdefault(milestone, [])
             PRS[milestone] += [message]
         except Exception as e:
@@ -889,6 +911,9 @@ def prs_status(
             print('ERR\t{}'.format(prmsg))
     if version:
         TO_APPLY = sorted(list(set(TO_APPLY)))
+        print(colors.magenta('\nIncluded in projects\n'))
+        for x in IN_PROJECTS:
+            print(colors.magenta('* {}'.format(x)))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
@@ -897,7 +922,7 @@ def prs_status(
                  'curl -H \'Authorization: token {token}\' '
                  '-H "Accept: application/vnd.github.v3.diff" '
                  'https://api.github.com/repos/gisce/erp/pulls/{pr} --output {pr}.diff'.format(
-                       pr=x, token=github_config()['token'])
+                       pr=x, token="$GITHUB_TOKEN")
             )
     return True
 
