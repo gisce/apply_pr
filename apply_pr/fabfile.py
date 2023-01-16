@@ -844,7 +844,7 @@ def prs_status(
     ERRORS = []
     TO_APPLY = []
     IN_PROJECTS = []
-    rep = GHAPIRequester('gisce', 'erp')
+    rep = GHAPIRequester(owner, repository)
     for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
         try:
             pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
