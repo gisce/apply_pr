@@ -864,7 +864,7 @@ def prs_status(
                     to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
             #merged_at = pull['merged_at']
-            milestone = pull['milestone']
+            milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
@@ -877,7 +877,7 @@ def prs_status(
                 )
             )
             if version:
-                if vsn.parse(milestone) <= vsn.parse(version):
+                if milestone != '(With out Milestone)' and vsn.parse(milestone) <= vsn.parse(version):
                     if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
                         if not projects:
