@@ -26,6 +26,8 @@ from collections import OrderedDict
 
 from tqdm import tqdm
 from packaging import version as vsn
+from giscemultitools.githubutils.objects import GHAPIRequester
+from giscemultitools.githubutils.utils import GithubUtils
 
 
 logger = logging.getLogger(__name__)
@@ -588,7 +590,7 @@ def print_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None, environment='pro'
+    owner='gisce', repository='erp', pr_number=None, environment='pro', no_set_label=False
 ):
     if not deploy_id:
         return
@@ -606,7 +608,7 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
-    if state == 'success' and pr_number and environment is not None:
+    if state == 'success' and pr_number and environment is not None and not no_set_label:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
             owner, repository, pr_number
         )
@@ -673,7 +675,7 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False, environment='pro', reject=False
+        as_diff=False, environment='pro', reject=False, skip_rolling_check=False, no_set_label=False
 ):
     if force_name:
         repository_name = force_name
@@ -681,7 +683,8 @@ def apply_pr(
         repository_name = repository
     try:
         check_it_exists(src=src, repository=repository_name, sudo_user=sudo_user)
-        check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
+        if not skip_rolling_check:
+            check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
         check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
@@ -713,7 +716,9 @@ def apply_pr(
                            state='pending',
                            owner=owner,
                            repository=repository,
-                           environment=environment)
+                           environment=environment,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
@@ -762,7 +767,9 @@ def apply_pr(
                            state='success',
                            owner=owner,
                            repository=repository,
-                           pr_number=pr_number)
+                           pr_number=pr_number,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
@@ -771,7 +778,9 @@ def apply_pr(
                            state='error',
                            description=e.message,
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.red("Deploy failure \U0001F680"))
         return False
 
@@ -835,35 +844,55 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    IN_PROJECTS = []
+    rep = GHAPIRequester(owner, repository)
     for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
         try:
-            url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
-                owner, repository, pr_number
+            pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
+                rep.get_pull_request_projects_and_commits(int(pr_number))
             )
-            r = requests.get(url, headers=headers)
-            pull = json.loads(r.text)
+            pull = pull_info['pullRequest']
+            projects_info = pull_info['projectItems']
+            projects_show = ''
+            to_apply = '{}'.format(str(pr_number))
+            projects = ''
+            if projects_info:
+                projects = ','.join(
+                    [x['project_name'] for x in projects_info if x['card_state'] == 'Done']
+                )
+                if projects:
+                    projects_show = 'PROJECTS => {}'.format(projects)
+                    to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            merged_at = pull['merged_at']
-            milestone = pull['milestone']['title']
+            #merged_at = pull['merged_at']
+            milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
-                ' milestone {milestone}'.format(
+                ' milestone {milestone}'
+                ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at=merged_at, milestone=milestone
+                    merged_at="", milestone=milestone,
+                    projects=projects_show
                 )
             )
             if version:
-                if vsn.parse(milestone) <= vsn.parse(version):
-                    if state_pr != 'closed':
+                if milestone != '(With out Milestone)' and vsn.parse(milestone) <= vsn.parse(version):
+                    if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
-                        TO_APPLY.append(str(pr_number))
+                        if not projects:
+                            TO_APPLY.append(to_apply)
+                        else:
+                            IN_PROJECTS.append(to_apply)
                     else:
                         message = colors.green(message)
                 else:
                     message = colors.red(message)
-                    TO_APPLY.append(str(pr_number))
+                    if not projects:
+                        TO_APPLY.append(to_apply)
+                    else:
+                        IN_PROJECTS.append(to_apply)
             PRS.setdefault(milestone, [])
             PRS[milestone] += [message]
         except Exception as e:
@@ -883,6 +912,9 @@ def prs_status(
             print('ERR\t{}'.format(prmsg))
     if version:
         TO_APPLY = sorted(list(set(TO_APPLY)))
+        print(colors.magenta('\nIncluded in projects\n'))
+        for x in IN_PROJECTS:
+            print(colors.magenta('* {}'.format(x)))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
@@ -891,7 +923,7 @@ def prs_status(
                  'curl -H \'Authorization: token {token}\' '
                  '-H "Accept: application/vnd.github.v3.diff" '
                  'https://api.github.com/repos/gisce/erp/pulls/{pr} --output {pr}.diff'.format(
-                       pr=x, token=github_config()['token'])
+                       pr=x, token="$GITHUB_TOKEN")
             )
     return True
 
