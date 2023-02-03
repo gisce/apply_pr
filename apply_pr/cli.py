@@ -23,7 +23,8 @@ deployment_options = [
 ]
 
 apply_pr_options = github_options + deployment_options + [
-    click.option("--pr", help="Pull request to apply", required=True),
+    click.option("--pr", help="Pull request to apply", default='',required=True),
+    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
     click.option("--force-hostname", help="Force hostname",  default=False),
@@ -33,7 +34,12 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
                 is_flag=True, default=False),
     click.option("--as-diff", help="Apply pull request as unique diff",
-                 is_flag=True, default=False)
+                 is_flag=True, default=False),
+    click.option("--prs", help="Pull request to apply", default=''),
+    click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
+    click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False),
+    click.option("--exit-code-failure", help="If enabled, process will terminate with exit 1 if had some error", is_flag=True, default=False),
+    click.option("--no-set-label", help="Don't set deployed label on PR", is_flag=True, default=False)
 ]
 
 status_options = github_options + [
@@ -64,6 +70,7 @@ create_changelog_options = github_options + [
 
 mark_deployed_options = github_options + [
     click.option("--pr", help="Pull request to apply", required=True),
+    click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--force-hostname", help="Force hostname",  default=False),
 ]
 
@@ -102,28 +109,31 @@ def sastre(**kwargs):
 def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
-    auto_exit=True, force_name=None, re_deploy=False, as_diff=False
+    auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
+    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False, no_set_label=False
 ):
     """
     Deploy a PR into a remote server via Fabric
-    :param pr:              Number of the PR to deploy
-    :type pr:               str
-    :param host:            Host to connect
-    :type host:             str
-    :param from_number:     Number of the commit to deploy from
-    :type from_number:      str
-    :param from_commit:     Hash of the commit to deploy from
-    :type from_commit:      str
-    :param force_hostname:  Hostname used in GitHub
-    :type force_hostname:   str
-    :param owner:           Owner of the repository of GitHub
-    :type owner:            str
-    :param repository:      Name of the repository of GitHub
-    :type repository:       str
-    :param src:             Source path to the repository directory
-    :type src:              str
-    :param sudo_user:       Remote user with sudo
-    :type sudo_user         str
+    :param pr:                  Number of the PR to deploy
+    :type pr:                   str
+    :param host:                Host to connect
+    :type host:                 str
+    :param from_number:         Number of the commit to deploy from
+    :type from_number:          str
+    :param from_commit:         Hash of the commit to deploy from
+    :type from_commit:          str
+    :param force_hostname:      Hostname used in GitHub
+    :type force_hostname:       str
+    :param owner:               Owner of the repository of GitHub
+    :type owner:                str
+    :param repository:          Name of the repository of GitHub
+    :type repository:           str
+    :param src:                 Source path to the repository directory
+    :type src:                  str
+    :param sudo_user:           Remote user with sudo
+    :type sudo_user             str
+    :param skip_rolling_check:  Allow to skip rolling mode check
+    :type sudo_user             bool
     """
     if re_deploy and as_diff:
         click.echo(colors.red(
@@ -137,22 +147,53 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
-
-    configure_logging()
-    apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-    result = execute(
-        apply_pr_task, pr, from_number, from_commit, hostname=force_hostname,
-        src=src, owner=owner, repository=repository, sudo_user=sudo_user,
-        host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-        force_name=force_name, re_deploy=re_deploy, as_diff=as_diff
-    )
-    return result
+    if not prs and not pr:
+        click.echo(colors.red(
+            u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
+        ))
+        sys.exit(1)
+    if prs:
+        deploy_prs = prs.split(' ')
+    else:
+        deploy_prs = [pr]
+    results = []
+    failed_prs = []
+    for pr_dep in deploy_prs:
+        click.echo(colors.yellow(
+            u"https://github.com/{owner}/{repository}/pull/{pr_number}".format(
+                owner=owner, repository=repository, pr_number=pr_dep
+            )
+        ))
+        configure_logging()
+        apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
+        result = execute(
+            apply_pr_task, pr_dep, from_number, from_commit, hostname=force_hostname,
+            src=src, owner=owner, repository=repository, sudo_user=sudo_user,
+            host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
+            force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
+            environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
+            no_set_label=no_set_label
+        )
+        result_list = list(result.items())
+        if not result_list[0][1]:
+            failed_prs.append(pr_dep)
+        results.append(result)
+    if failed_prs:
+        click.echo(colors.red(
+            u"Failed PRS :{}".format(' '.join(failed_prs))
+        ))
+        if exit_code_failure:
+            sys.exit(1)
+    return results
 
 
 @sastre.command(name="deploy")
 @add_options(apply_pr_options)
 def deploy(**kwargs):
     """Deploy a PR into a remote server via Fabric"""
+    if not isinstance(kwargs['pr'], (list, tuple)):
+        from apply_pr.fabfile import get_info_from_url
+        kwargs.update(get_info_from_url(kwargs['pr']))
     return apply_pr(**kwargs)
 
 
@@ -191,7 +232,7 @@ def status_pr(deploy_id, status, owner, repository):
 
     mark_deploy_status = WrappedCallableTask(fabfile.mark_deploy_status)
     execute(mark_deploy_status, deploy_id, status,
-            owner=owner, repository=repository)
+            owner=owner, repository=repository, environment=None)
 
 
 @sastre.command(name='status')
@@ -201,13 +242,13 @@ def status(**kwargs):
     status_pr(**kwargs)
 
 
-def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='erp'):
+def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='erp', environ='pre'):
     from apply_pr import fabfile
 
     configure_logging()
 
     mark_deployed_task = WrappedCallableTask(fabfile.mark_deployed)
-    execute(mark_deployed_task, pr, hostname=force_hostname, owner=owner, repository=repository)
+    execute(mark_deployed_task, pr, hostname=force_hostname, owner=owner, repository=repository, environment=environ)
     click.echo(colors.green(u"Marking PR#{} as deployed success! \U0001F680".format(
         pr
     )))
@@ -215,8 +256,9 @@ def mark_deployed_backend(pr, force_hostname=False, owner='gisce', repository='e
 
 @sastre.command(name='mark_deployed')
 @add_options(mark_deployed_options)
-def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp'):
-    return mark_deployed_backend(pr, force_hostname=force_hostname, owner=owner, repository=repository)
+def mark_deployed(pr, force_hostname=False, owner='gisce', repository='erp', environ='pre'):
+    return mark_deployed_backend(
+        pr, force_hostname=force_hostname, owner=owner, repository=repository, environ=environ)
 
 
 def check_prs_status(prs, separator, version, owner, repository):
