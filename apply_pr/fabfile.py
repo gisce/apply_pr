@@ -11,7 +11,7 @@ import io
 import re
 import pprint
 
-from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task
+from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task, env, prefix
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
 from fabric.state import output
@@ -26,6 +26,8 @@ from collections import OrderedDict
 
 from tqdm import tqdm
 from packaging import version as vsn
+from giscemultitools.githubutils.objects import GHAPIRequester
+from giscemultitools.githubutils.utils import GithubUtils
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,41 @@ def apply_pr_config(**config):
 config = apply_pr_config()
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
+
+DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
+
+
+def get_info_from_url(pr):
+    if pr.startswith('https://'):
+        vals = pr.split('/')
+        info = {
+           'owner': vals[3],
+           'repository': vals[4],
+           'pr': vals[6]
+        }
+        if len(vals) == 9 and vals[7] == 'commits':
+            info['from_commit'] = vals[8]
+        return info
+    else:
+        return {'pr': pr}
+
+
+@task
+def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp'):
+    temp_dir = '/tmp/%s.diff' % pr_number
+    remote_dir = '{}/{}/patches/{}'.format(src, repository, pr_number)
+    remote_dir_bkp = '{}/{}/patches/{}/backup'.format(src, repository, pr_number)
+    sudo("mkdir -p %s" % remote_dir)
+    sudo("mkdir -p %s" % remote_dir_bkp)
+    sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
+    with cd('{}/{}'.format(src, repository)):
+        sudo("git diff > {}/pre_{}.diff".format(remote_dir_bkp, pr_number), user=sudo_user)
+    diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
+    with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
+        logger.info('Uploading diff {}.diff'.format(pr_number))
+        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=True)
+    sudo("mv %s %s" % (temp_dir, diff_path))
+    sudo("chown {0}: {1}".format(sudo_user, diff_path))
 
 
 @task
@@ -78,6 +115,17 @@ def upload_patches(
         remote_patch_file = '{}/{}'.format(temp_dir, patch)
         sudo("mv %s %s" % (remote_patch_file, remote_dir))
     sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
+
+
+@task
+def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
+                      sudo_user='erp', reject=False
+):
+    with settings(sudo_user=sudo_user):
+        with cd("{}/{}".format(src, repository)):
+            diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
+                pr_number=pr_number)
+            PatchApplier.apply(diff_file, reject=reject)
 
 
 @task
@@ -128,6 +176,70 @@ class WiggleException(Exception):
 class GitHubException(Exception):
     pass
 
+
+class PatchApplier(object):
+
+    @staticmethod
+    def apply(diff, stash=True, reject=False, message=None):
+        need_stash = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om")
+        stashed = False
+        if stash and not need_stash:
+            stash = False
+        if message is None:
+            message = 'Apply {}'.format(diff)
+        if stash:
+            print(colors.yellow('Stashing all before...'))
+            sudo("git stash -u")
+            stashed = True
+        try:
+            if reject:
+                reject = '  --reject'
+            else:
+                reject = ''
+            print(colors.green('Applying diff {}'.format(diff)))
+            old_prefix = env.sudo_prefix
+            env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
+            if reject:
+                try:
+                    sudo(
+                        "git apply {}{}".format(diff, reject),
+                     )
+                except:
+                    print(colors.yellow('Some rejects ...'))
+                rej = sudo(
+                    "git status | grep rej;echo yes", user='erp'
+                    )
+                if rej != 'yes':
+                    prompt(
+                        colors.red(
+                            "Manual resolve. "
+                            "If nothing to commit, empty staged"
+                            " and unstaged changes. Press Enter to continue.")
+                    )
+            else:
+                sudo(
+                    "git apply {}{}".format(diff, reject),
+                )
+            empty_files = sudo(
+                'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
+            )
+            if empty_files != 'empty':
+                print(colors.green('Commit!'))
+                sudo(
+                    'git add -A && git commit -m "{}"'.format(message),
+                )
+            else:
+                print(colors.green('Nothing to commit! Continue'))
+            env.sudo_prefix = old_prefix
+        except Exception as e:
+            print(colors.red('\U000026D4 Error applying diff'))
+            raise
+        finally:
+            if stash and stashed:
+                print(colors.yellow('Unstashing...'))
+                sudo("git stash pop")
+
+
 class GitApplier(object):
     def __init__(self, patches):
         self.patches = patches
@@ -144,12 +256,12 @@ class GitApplier(object):
         self.catch_result(result)
 
     def catch_result(self, result):
-        for line in result.split('\n'):
+        for line in result.decode('utf-8').split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
         if result.failed:
-            if "git config --global user.email" in result:
+            if "git config --global user.email" in result.decode('utf-8'):
                 logger.error(
                     "Need to configure git for this user\n"
                 )
@@ -267,9 +379,13 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 def export_patches_from_git(from_commit, to_commit, pr_number):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
     deploy_path = "deploy/patches/{}".format(pr_number)
-    if isdir(deploy_path):
-        local("rm -r {}".format(deploy_path))
-    local("mkdir -p {}".format(deploy_path))
+    try:
+        if isdir(deploy_path):
+            local("rm -r {}".format(deploy_path))
+        local("mkdir -p {}".format(deploy_path))
+    except BaseException as e:
+        logger.error('Permission denied to write {} in the current directory'.format(deploy_path))
+        raise
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
@@ -316,11 +432,31 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
+def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+    diff_path = "deploy/patches/{}.diff".format(pr_number)
+    tqdm.write('Exporting diff from Github')
+    headers = {
+        'Authorization': 'token %s' % github_config()['token'],
+        'Accept': 'application/vnd.github.v3.diff'
+    }
+    url = 'https://api.github.com/repos/{owner}/{repository}/pulls/{pr_number}'.format(
+        owner=owner, repository=repository, pr_number=pr_number
+    )
+    r = requests.get(url, headers=headers)
+    with open(diff_path, 'w') as f:
+        f.write(r.text.encode('utf-8'))
+
+
+@task
 def export_patches_from_github(
     pr_number, from_commit=None, owner='gisce', repository='erp'
 ):
     patch_folder = "deploy/patches/%s" % pr_number
-    local("mkdir -p %s" % patch_folder)
+    try:
+        local("mkdir -p %s" % patch_folder)
+    except BaseException as e:
+        logger.error('Permission denied to write {} in the current directory'.format(patch_folder))
+        raise
     tqdm.write('Exporting patches from GitHub')
     headers = {'Authorization': 'token %s' % github_config()['token']}
     commits = get_commits(pr_number, owner=owner, repository=repository)
@@ -351,7 +487,7 @@ def export_patches_from_github(
         filename = '%04i-%s.patch' % (patch_number, message)
         with open(os.path.join(patch_folder, filename), 'w') as patch:
             logger.info('Exporting patch %s.' % filename)
-            patch.write(r.text)
+            patch.write(r.text.encode('utf-8'))
 
 
 @task
@@ -380,6 +516,7 @@ def mark_to_deploy(
         'environment': host,
         'description': host,
         'required_contexts': [],
+        'auto_inactive': False,
         'payload': {
             'host': host
         }
@@ -397,8 +534,7 @@ def mark_to_deploy(
     return deploy_id
 
 
-@task
-def get_deploys(pr_number, owner='gisce', repository='erp'):
+def get_deploys(pr_number, owner='gisce', repository='erp', commit=None):
     headers = {
         'Accept': 'application/vnd.github.cannonball-preview+json',
         'Authorization': 'token %s' % github_config()['token']
@@ -408,17 +544,41 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
     )
     r = requests.get(url, headers=headers)
     pull = json.loads(r.text)
-    commit = pull['head']['sha']
-    url = "https://api.github.com/repos/{}/{}/deployments?ref={}".format(
+    if commit is None:
+        commit = pull['head']['sha']
+    url = "https://api.github.com/repos/{}/{}/deployments?sha={}".format(
         owner, repository, commit
     )
     r = requests.get(url, headers=headers)
     res = json.loads(r.text)
     res = sorted(res, key=lambda x: x['created_at'])
+    deploys = []
     for deployment in res:
-        print("Deployment id: {id} to {description}".format(**deployment))
         statusses = json.loads(requests.get(deployment['statuses_url'], headers=headers).text)
-        for status in reversed(statusses):
+        deployment['status'] = statusses
+        deploys.append(deployment)
+    return deploys
+
+
+@task
+def get_last_deploy(pr_number, hostname=False, owner='gisce', repository='erp'):
+    if not hostname:
+        hostname = run("uname -n")
+    commits =  [x['sha'] for x in reversed(get_commits(pr_number, owner, repository))]
+    logger.info('Finding last success deploy...')
+    for idx, commit in tqdm(enumerate(commits), total=len(commits)):
+        for deploy in get_deploys(pr_number, owner, repository, commit):
+            if deploy['payload']['host'] == hostname:
+                if deploy['status'][0]['state'] == 'success':
+                    return deploy, commits[idx - 1]
+    return None, None
+
+
+@task
+def print_deploys(pr_number, owner='gisce', repository='erp'):
+    for deployment in get_deploys(pr_number, owner, repository):
+        print("Deployment id: {id} to {description}".format(**deployment))
+        for status in deployment['status']:
             status_text = (
                 "  - {state} by {creator[login]} on {created_at}".format(
                     **status
@@ -437,7 +597,7 @@ def get_deploys(pr_number, owner='gisce', repository='erp'):
 @task
 def mark_deploy_status(
     deploy_id, state='success', description=None,
-    owner='gisce', repository='erp', pr_number=None
+    owner='gisce', repository='erp', pr_number=None, environment='pro', no_set_label=False
 ):
     if not deploy_id:
         return
@@ -455,18 +615,22 @@ def mark_deploy_status(
         payload['description'] = description
     r = requests.post(url, data=json.dumps(payload), headers=headers)
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
-    if state == 'success' and pr_number:
+    if state == 'success' and pr_number and environment is not None and not no_set_label:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
             owner, repository, pr_number
         )
-        payload = {'labels': ['deployed']}
+        payload = {'labels': [DEPLOYED[environment]]}
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         logger.info('Add Label to deploy on PR {}'.format(pr_number))
 
 
 @task
 def export_patches_pr(pr_number, owner='gisce', repository='erp'):
-    local("mkdir -p deploy/patches/%s" % pr_number)
+    try:
+        local("mkdir -p deploy/patches/%s" % pr_number)
+    except BaseException as e:
+        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(patch_folder))
+        raise
     from_commit, to_commit, branch = find_from_to_commits(
         pr_number, owner=owner, repository=repository
     )
@@ -517,7 +681,8 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
-        sudo_user='erp', auto_exit=False, force_name=None,
+        sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
+        as_diff=False, environment='pro', reject=False, skip_rolling_check=False, no_set_label=False
 ):
     if force_name:
         repository_name = force_name
@@ -525,12 +690,26 @@ def apply_pr(
         repository_name = repository
     try:
         check_it_exists(src=src, repository=repository_name, sudo_user=sudo_user)
-        check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
+        if not skip_rolling_check:
+            check_is_rolling(src=src, repository=repository_name, sudo_user=sudo_user)
         check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
         logger.error(e)
         raise
+    if re_deploy:
+        tqdm.write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
+        last_deploy, from_commit = get_last_deploy(pr_number, hostname, owner, repository)
+        if last_deploy:
+            tqdm.write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
+            if last_deploy['sha'] == from_commit:
+                tqdm.write(colors.red('\U000026D4 No commits to deploy...'))
+                exit(-1)
+        else:
+            tqdm.write(colors.blue('\U0001F62F Not found...'))
+        resp = raw_input('Deploy from {}? (y/n): '.format(from_commit or '0'))
+        if resp.upper() != 'Y':
+            exit(-1)
     deploy_id = mark_to_deploy(pr_number,
                                hostname=hostname,
                                owner=owner,
@@ -543,40 +722,61 @@ def apply_pr(
         mark_deploy_status(deploy_id,
                            state='pending',
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           environment=environment,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
         if not skip_upload:
-            pass
-            export_patches_from_github(pr_number,
-                                       from_commit,
-                                       owner=owner,
-                                       repository=repository)
-            upload_patches(pr_number,
-                           from_commit,
-                           src=src,
-                           repository=repository_name,
-                           sudo_user=sudo_user)
-        if from_commit:
-            from_ = from_commit
+            if as_diff:
+                export_diff_from_github(
+                    pr_number, owner=owner, repository=repository
+                )
+                upload_diff(
+                    pr_number, src=src, repository=repository,
+                    sudo_user=sudo_user
+                )
+            else:
+                export_patches_from_github(pr_number,
+                                           from_commit,
+                                           owner=owner,
+                                           repository=repository)
+                upload_patches(pr_number,
+                               from_commit,
+                               src=src,
+                               repository=repository_name,
+                               sudo_user=sudo_user)
+        if as_diff:
+            tqdm.write(colors.yellow("Applying diff \U0001F648"))
+            check_am_session(src=src, repository=repository_name)
+            apply_remote_diff(
+                pr_number, src=src, repository=repository, sudo_user=sudo_user,
+                reject=reject
+            )
         else:
-            from_ = from_number
-        tqdm.write(colors.yellow("Applying patches \U0001F648"))
-        check_am_session(src=src, repository=repository_name)
-        result = apply_remote_patches(
-            pr_number,
-            from_,
-            src=src,
-            repository=repository_name,
-            sudo_user=sudo_user,
-            auto_exit=auto_exit,
-        )
+            if from_commit:
+                from_ = from_commit
+            else:
+                from_ = from_number
+            tqdm.write(colors.yellow("Applying patches \U0001F648"))
+            check_am_session(src=src, repository=repository_name)
+            result = apply_remote_patches(
+                pr_number,
+                from_,
+                src=src,
+                repository=repository_name,
+                sudo_user=sudo_user,
+                auto_exit=auto_exit,
+            )
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
                            repository=repository,
-                           pr_number=pr_number)
+                           pr_number=pr_number,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
@@ -585,13 +785,15 @@ def apply_pr(
                            state='error',
                            description=e.message,
                            owner=owner,
-                           repository=repository)
+                           repository=repository,
+                           no_set_label=no_set_label
+                           )
         tqdm.write(colors.red("Deploy failure \U0001F680"))
         return False
 
 
 @task
-def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
+def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp', environment='pre'):
     deploy_id = mark_to_deploy(pr_number,
                                hostname=hostname,
                                owner=owner,
@@ -600,7 +802,8 @@ def mark_deployed(pr_number, hostname=False, owner='gisce', repository='erp'):
                        state='success',
                        owner=owner,
                        repository=repository,
-                       pr_number=pr_number)
+                       pr_number=pr_number,
+                       environment=environment)
 
 @task
 def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', sudo_user='erp'):
@@ -648,35 +851,55 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    IN_PROJECTS = []
+    rep = GHAPIRequester(owner, repository)
     for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
         try:
-            url = "https://api.github.com/repos/{}/{}/pulls/{}".format(
-                owner, repository, pr_number
+            pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
+                rep.get_pull_request_projects_and_commits(int(pr_number))
             )
-            r = requests.get(url, headers=headers)
-            pull = json.loads(r.text)
+            pull = pull_info['pullRequest']
+            projects_info = pull_info['projectItems']
+            projects_show = ''
+            to_apply = '{}'.format(str(pr_number))
+            projects = ''
+            if projects_info:
+                projects = ','.join(
+                    [x['project_name'] for x in projects_info if x['card_state'] == 'Done']
+                )
+                if projects:
+                    projects_show = 'PROJECTS => {}'.format(projects)
+                    to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            merged_at = pull['merged_at']
-            milestone = pull['milestone']['title']
+            #merged_at = pull['merged_at']
+            milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
-                ' milestone {milestone}'.format(
+                ' milestone {milestone}'
+                ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at=merged_at, milestone=milestone
+                    merged_at="", milestone=milestone,
+                    projects=projects_show
                 )
             )
             if version:
-                if vsn.parse(milestone) <= vsn.parse(version):
-                    if state_pr != 'closed':
+                if milestone != '(With out Milestone)' and vsn.parse(milestone) <= vsn.parse(version):
+                    if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
-                        TO_APPLY.append(str(pr_number))
+                        if not projects:
+                            TO_APPLY.append(to_apply)
+                        else:
+                            IN_PROJECTS.append(to_apply)
                     else:
                         message = colors.green(message)
                 else:
                     message = colors.red(message)
-                    TO_APPLY.append(str(pr_number))
+                    if not projects:
+                        TO_APPLY.append(to_apply)
+                    else:
+                        IN_PROJECTS.append(to_apply)
             PRS.setdefault(milestone, [])
             PRS[milestone] += [message]
         except Exception as e:
@@ -696,9 +919,19 @@ def prs_status(
             print('ERR\t{}'.format(prmsg))
     if version:
         TO_APPLY = sorted(list(set(TO_APPLY)))
+        print(colors.magenta('\nIncluded in projects\n'))
+        for x in IN_PROJECTS:
+            print(colors.magenta('* {}'.format(x)))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
+        for x in TO_APPLY:
+            print(
+                 'curl -H \'Authorization: token {token}\' '
+                 '-H "Accept: application/vnd.github.v3.diff" '
+                 'https://api.github.com/repos/gisce/erp/pulls/{pr} --output {pr}.diff'.format(
+                       pr=x, token="$GITHUB_TOKEN")
+            )
     return True
 
 @task
@@ -799,7 +1032,7 @@ def create_changelog(
         return (message)
 
     def print_item_detail(item, key=None):
-        body = item['body']
+        body = item['body'] or ''
         body = re.sub('^# ', '#### ', body).strip()
         body = re.sub('\n# ', '\n#### ', body).strip()
         body = re.sub('^## ', '#### ', body).strip()
