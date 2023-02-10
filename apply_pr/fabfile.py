@@ -125,7 +125,7 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            PatchApplier.apply(diff_file, reject=reject)
+            PatchApplier.apply(diff_file, reject=reject, sudo_user=sudo_user)
 
 
 @task
@@ -180,8 +180,12 @@ class GitHubException(Exception):
 class PatchApplier(object):
 
     @staticmethod
-    def apply(diff, stash=True, reject=False, message=None):
-        need_stash = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om")
+    def apply(diff, stash=True, reject=False, message=None, sudo_user='erp'):
+        old_prefix = env.sudo_prefix
+        env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
+        need_stash = sudo(
+            "test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om", user=sudo_user
+        )
         stashed = False
         if stash and not need_stash:
             stash = False
@@ -197,8 +201,6 @@ class PatchApplier(object):
             else:
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
-            old_prefix = env.sudo_prefix
-            env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
             if reject:
                 try:
                     sudo(
@@ -207,7 +209,7 @@ class PatchApplier(object):
                 except:
                     print(colors.yellow('Some rejects ...'))
                 rej = sudo(
-                    "git status | grep rej;echo yes", user='erp'
+                    "git status | grep rej;echo yes", user=sudo_user
                     )
                 if rej != 'yes':
                     prompt(
@@ -230,7 +232,7 @@ class PatchApplier(object):
                 )
             else:
                 print(colors.green('Nothing to commit! Continue'))
-            env.sudo_prefix = old_prefix
+
         except Exception as e:
             print(colors.red('\U000026D4 Error applying diff'))
             raise
@@ -238,6 +240,7 @@ class PatchApplier(object):
             if stash and stashed:
                 print(colors.yellow('Unstashing...'))
                 sudo("git stash pop")
+            env.sudo_prefix = old_prefix
 
 
 class GitApplier(object):
