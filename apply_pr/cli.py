@@ -7,6 +7,7 @@ from fabric.tasks import execute, WrappedCallableTask
 from fabric.api import env
 from fabric import colors
 import click
+from tqdm import tqdm
 
 DEFAULT_LOG_LEVEL = 'ERROR'
 
@@ -154,11 +155,13 @@ def apply_pr(
         sys.exit(1)
     if prs:
         deploy_prs = prs.split(' ')
+        progress = tqdm
     else:
         deploy_prs = [pr]
+        progress = iter
     results = []
     failed_prs = []
-    for pr_dep in deploy_prs:
+    for pr_dep in progress(deploy_prs):
         click.echo(colors.yellow(
             u"https://github.com/{owner}/{repository}/pull/{pr_number}".format(
                 owner=owner, repository=repository, pr_number=pr_dep
