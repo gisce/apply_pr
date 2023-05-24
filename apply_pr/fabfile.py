@@ -874,17 +874,19 @@ def prs_status(
                     projects_show = 'PROJECTS => {}'.format(projects)
                     to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            #merged_at = pull['merged_at']
+            merged_at = pull['mergedAt']
+            created_at = pull['createdAt']
             milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
+                ' created_at {created_at}'
                 ' milestone {milestone}'
                 ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at="", milestone=milestone,
-                    projects=projects_show
+                    merged_at=merged_at, created_at=created_at,
+                    milestone=milestone, projects=projects_show
                 )
             )
             if version:
