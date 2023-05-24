@@ -856,11 +856,30 @@ def prs_status(
     TO_APPLY = []
     IN_PROJECTS = []
     rep = GHAPIRequester(owner, repository)
-    for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
-        try:
-            pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
-                rep.get_pull_request_projects_and_commits(int(pr_number))
+    def get_prs_info(plist):
+        res = []
+        for _pr in tqdm(list(set(plist)), desc='Getting pr data from Github'):
+            try:
+                res.append(
+                    GithubUtils.plain_get_commits_sha_from_merge_commit(
+                        rep.get_pull_request_projects_and_commits(int(_pr))
+                    )
+                )
+            except Exception:
+                res.append({'pullRequest': {'number': _pr}})
+        if res:
+            max_meged_at = '2999-12-27T06:22:04Z'
+            return sorted(
+                res, key=lambda _p: (
+                    _p['pullRequest'].get('mergedAt', max_meged_at) or max_meged_at,
+                    _p['pullRequest'].get('createdAt') if (_p['pullRequest'].get('mergedAt', max_meged_at) or max_meged_at) == max_meged_at else ''
+                )
             )
+        return res
+
+    for pull_info in tqdm(get_prs_info(pr_list), desc='Process PRs info'):
+        pr_number = pull_info['pullRequest']['number']
+        try:
             pull = pull_info['pullRequest']
             projects_info = pull_info['projectItems']
             projects_show = ''
@@ -874,17 +893,19 @@ def prs_status(
                     projects_show = 'PROJECTS => {}'.format(projects)
                     to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            #merged_at = pull['merged_at']
+            merged_at = pull['mergedAt']
+            created_at = pull['createdAt']
             milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
+                ' created_at {created_at}'
                 ' milestone {milestone}'
                 ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at="", milestone=milestone,
-                    projects=projects_show
+                    merged_at=merged_at, created_at=created_at,
+                    milestone=milestone, projects=projects_show
                 )
             )
             if version:
@@ -921,7 +942,6 @@ def prs_status(
     for prmsg in ERRORS:
             print('ERR\t{}'.format(prmsg))
     if version:
-        TO_APPLY = sorted(list(set(TO_APPLY)))
         print(colors.magenta('\nIncluded in projects\n'))
         for x in IN_PROJECTS:
             print(colors.magenta('* {}'.format(x)))
