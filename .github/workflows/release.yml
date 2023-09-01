@@ -41,6 +41,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') }}
           generate_release_notes: true
+      - run: rm -r dist
       - name: Publish a Python distribution to PyPI
         if: ${{ contains(github.ref, '-rc') }} == false
         uses: conchylicultor/pypi-build-publish@v1
