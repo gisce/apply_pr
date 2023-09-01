@@ -27,7 +27,8 @@ jobs:
           strip_v: false
       - name: Generate binary
         run: |
-          pip install pyinstaller
+          pip install pyinstaller==3.3.1
+          pip install -e .
           pyinstaller --onefile -n sastre apply_pr/cli.py
       - name: Creating a realease/pre-release
         id: create_release
