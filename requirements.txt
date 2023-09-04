@@ -7,3 +7,4 @@ click
 tqdm
 packaging
 giscemultitools>=1.1.0
+importlib-metadata;python_version<"3.8"
