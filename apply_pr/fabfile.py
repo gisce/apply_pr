@@ -50,8 +50,10 @@ config = apply_pr_config()
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
 
+USE_SUDO = True
 if config.get('no_sudo_mode'):
     from fabric.api import run as sudo
+    USE_SUDO = False
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
@@ -84,7 +86,7 @@ def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp
     diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
     with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
         logger.info('Uploading diff {}.diff'.format(pr_number))
-        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=True)
+        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=USE_SUDO)
     sudo("mv %s %s" % (temp_dir, diff_path))
     sudo("chown {0}: {1}".format(sudo_user, diff_path))
 
@@ -115,7 +117,7 @@ def upload_patches(
                     from_commit = None
         logger.info('Uploading patch {}'.format(patch))
         put('deploy/patches/%s/%s' % (pr_number, patch),
-            temp_dir, use_sudo=True)
+            temp_dir, use_sudo=USE_SUDO)
         remote_patch_file = '{}/{}'.format(temp_dir, patch)
         sudo("mv %s %s" % (remote_patch_file, remote_dir))
     sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
