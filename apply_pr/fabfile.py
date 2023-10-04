@@ -46,8 +46,12 @@ def apply_pr_config(**config):
 
 
 config = apply_pr_config()
+
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
+
+if config.get('no_sudo_mode'):
+    from fabric.api import run as sudo
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
