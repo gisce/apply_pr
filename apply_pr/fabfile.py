@@ -21,10 +21,18 @@ from osconf import config_from_environment
 from slugify import slugify
 from os.path import isdir
 import requests
-import StringIO
+from io import BytesIO
+from six import string_types, PY2
+from tqdm import tqdm
+if PY2:
+    input = raw_input
+else:
+    pass
+
 from collections import OrderedDict
 
-from tqdm import tqdm
+
+
 from packaging import version as vsn
 from giscemultitools.githubutils.objects import GHAPIRequester
 from giscemultitools.githubutils.utils import GithubUtils
@@ -134,7 +142,7 @@ def apply_remote_patches(
     auto_exit=True
 ):
     from_commit = None
-    if isinstance(from_patch, basestring) and len(from_patch) == 40:
+    if isinstance(from_patch, string_types) and len(from_patch) == 40:
         from_commit = from_patch
         logger.info('Applying from commit {}'.format(from_commit))
         from_patch = 0
@@ -259,12 +267,12 @@ class GitApplier(object):
         self.catch_result(result)
 
     def catch_result(self, result):
-        for line in result.decode('utf-8').split('\n'):
+        for line in result.split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
         if result.failed:
-            if "git config --global user.email" in result.decode('utf-8'):
+            if "git config --global user.email" in result:
                 logger.error(
                     "Need to configure git for this user\n"
                 )
@@ -446,7 +454,7 @@ def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
         owner=owner, repository=repository, pr_number=pr_number
     )
     r = requests.get(url, headers=headers)
-    with open(diff_path, 'w') as f:
+    with open(diff_path, 'wb') as f:
         f.write(r.text.encode('utf-8'))
 
 
@@ -488,7 +496,7 @@ def export_patches_from_github(
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (patch_number, message)
-        with open(os.path.join(patch_folder, filename), 'w') as patch:
+        with open(os.path.join(patch_folder, filename), 'wb') as patch:
             logger.info('Exporting patch %s.' % filename)
             patch.write(r.text.encode('utf-8'))
 
@@ -632,7 +640,7 @@ def export_patches_pr(pr_number, owner='gisce', repository='erp'):
     try:
         local("mkdir -p deploy/patches/%s" % pr_number)
     except BaseException as e:
-        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(patch_folder))
+        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(pr_number))
         raise
     from_commit, to_commit, branch = find_from_to_commits(
         pr_number, owner=owner, repository=repository
@@ -710,7 +718,7 @@ def apply_pr(
                 exit(-1)
         else:
             tqdm.write(colors.blue('\U0001F62F Not found...'))
-        resp = raw_input('Deploy from {}? (y/n): '.format(from_commit or '0'))
+        resp = input('Deploy from {}? (y/n): '.format(from_commit or '0'))
         if resp.upper() != 'Y':
             exit(-1)
     deploy_id = mark_to_deploy(pr_number,
@@ -786,7 +794,7 @@ def apply_pr(
         logger.error(e)
         mark_deploy_status(deploy_id,
                            state='error',
-                           description=e.message,
+                           description='{}'.format(e),
                            owner=owner,
                            repository=repository,
                            no_set_label=no_set_label
@@ -818,7 +826,7 @@ def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', su
     with settings(warn_only=True, sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             for commit in commits:
-                fh = StringIO.StringIO()
+                fh = BytesIO()
                 commit_message = (
                     commit['commit']['message']
                 ).replace('"', '\\"')
@@ -1145,7 +1153,7 @@ def create_changelog(
         OFICINA_VIRTUAL: copy.deepcopy(pulls_desc),
         'others': copy.deepcopy(pulls_desc)
     }
-    label_keys = pulls_desc.keys()
+    label_keys = list(pulls_desc.keys())
     other_desc = []
     changelog_file = 'changelog_{}.md'.format(milestone)
     top_file = 'top_{}.md'.format(milestone)

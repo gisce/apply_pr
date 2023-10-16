@@ -1,7 +1,11 @@
 import logging
 import os
 import sys
-from urlparse import urlparse
+import six
+if six.PY2:
+    from urlparse import urlparse
+else:
+    from urllib.parse import urlparse
 
 from fabric.tasks import execute, WrappedCallableTask
 from fabric.api import env
@@ -27,8 +31,8 @@ apply_pr_options = github_options + deployment_options + [
     click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
-    click.option("--force-hostname", help="Force hostname",  default=False),
-    click.option("--force-name", help="Force host repository name",  default=False),
+    click.option("--force-hostname", help="Force hostname",  type=click.STRING, default=None),
+    click.option("--force-name", help="Force host repository name", type=click.STRING, default=None),
     click.option("--auto-exit", help="Execute git am --abort when fail",
                  type=click.BOOL, default=True),
     click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
