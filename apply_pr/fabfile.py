@@ -854,6 +854,7 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    CLOSED_PRS = []
     IN_PROJECTS = []
     rep = GHAPIRequester(owner, repository)
     def get_prs_info(plist):
@@ -912,7 +913,9 @@ def prs_status(
                 if milestone != '(With out Milestone)' and vsn.parse(milestone) <= vsn.parse(version):
                     if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
-                        if not projects:
+                        if state_pr.upper() == 'CLOSED':
+                            CLOSED_PRS.append(to_apply)
+                        elif not projects:
                             TO_APPLY.append(to_apply)
                         else:
                             IN_PROJECTS.append(to_apply)
@@ -945,6 +948,10 @@ def prs_status(
         print(colors.magenta('\nIncluded in projects\n'))
         for x in IN_PROJECTS:
             print(colors.magenta('* {}'.format(x)))
+        if CLOSED_PRS:
+            print(colors.red('\nClosed PRS: "{}"\n'.format(
+                ' '.join(CLOSED_PRS)
+            )))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
