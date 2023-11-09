@@ -1055,7 +1055,7 @@ def create_changelog(
 
     def print_item(item):
         title_anchor = slugify(item['title'])
-        message = u'\n* {title} [:fa-plus-circle: detalles](detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
+        message = u'\n* {title} [:fa-plus-circle: detalles](../detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
             title=item['title'], number=item['number'], url=item['url'],
             milestone=milestone, title_anchor=title_anchor
             )
