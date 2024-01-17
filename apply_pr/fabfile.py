@@ -784,7 +784,8 @@ def apply_pr(
                            owner=owner,
                            repository=repository,
                            pr_number=pr_number,
-                           no_set_label=no_set_label
+                           no_set_label=no_set_label,
+                           environment=environment
                            )
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
