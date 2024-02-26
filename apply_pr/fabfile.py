@@ -659,7 +659,7 @@ def check_it_exists(src='/home/erp/src', repository='erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
         res = sudo("ls {}/{}".format(src, repository))
         if res.return_code:
-            message = "The repository does not exist or cannot be found"
+            message = "The repository {} does not exist or cannot be found in {}".format(repository, src)
             tqdm.write(colors.red(message))
             abort(message)
 
