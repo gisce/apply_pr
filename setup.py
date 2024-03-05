@@ -5,7 +5,7 @@ with open('requirements.txt', 'r') as f:
 
 setup(
     name='apply_pr',
-    version='2.20.0',
+    version='3.0.0',
     packages=find_packages(),
     url='https://github.com/gisce/apply_pr',
     license='MIT',
