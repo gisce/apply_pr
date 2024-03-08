@@ -450,6 +450,11 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
 
 @task
 def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+    try:
+        local("mkdir -p %s" % 'deploy/patches')
+    except BaseException as e:
+        logger.error('Permission denied to write deploy/patches in the current directory')
+        raise
     diff_path = "deploy/patches/{}.diff".format(pr_number)
     tqdm.write('Exporting diff from Github')
     headers = {
