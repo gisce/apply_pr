@@ -11,6 +11,7 @@ import io
 import re
 import pprint
 
+import six
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task, env, prefix
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
@@ -274,7 +275,10 @@ class GitApplier(object):
 
     def catch_result(self, result):
         result_failed = result.failed
-        result_text = result.decode('utf-8')
+        if six.PY3:
+            result_text = bytes(result, 'utf-8').decode('utf-8')
+        else:
+            result_text = result.decode('utf-8')
         for line in result_text.split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
