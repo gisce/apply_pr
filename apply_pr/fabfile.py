@@ -273,16 +273,18 @@ class GitApplier(object):
         self.catch_result(result)
 
     def catch_result(self, result):
-        for line in result.split('\n'):
+        result_failed = result.failed
+        result_text = result.decode('utf-8')
+        for line in result_text.split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
-        if result.failed:
+        if result_failed:
             if "git config --global user.email" in result:
                 logger.error(
                     "Need to configure git for this user\n"
                 )
-                raise GitHubException(result)
+                raise GitHubException(result_text)
             try:
                 raise WiggleException
             except WiggleException:
