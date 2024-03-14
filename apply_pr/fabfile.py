@@ -284,7 +284,7 @@ class GitApplier(object):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
         if result_failed:
-            if "git config --global user.email" in result:
+            if "git config --global user.email" in result_text:
                 logger.error(
                     "Need to configure git for this user\n"
                 )
