@@ -880,6 +880,7 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    TO_APPLY_CAUSE_PROJECT_VERSION_ERROR = []
     CLOSED_PRS = []
     IN_PROJECTS = []
     rep = GHAPIRequester(owner, repository)
@@ -903,6 +904,15 @@ def prs_status(
                 )
             )
         return res
+
+    def check_version_project_done(project_items):
+        if version:
+            parsed_version = version.split('.')
+            parsed_version = '{}.{}'.format(parsed_version[0], parsed_version[1])
+            for _project in project_items:
+                if _project['project_name'].startswith(parsed_version) and _project['card_state'] != 'Done':
+                    return False
+        return True
 
     for pull_info in tqdm(get_prs_info(pr_list), desc='Process PRs info'):
         pr_number = pull_info['pullRequest']['number']
@@ -951,6 +961,9 @@ def prs_status(
                     message = colors.red(message)
                     if not projects:
                         TO_APPLY.append(to_apply)
+                    elif not check_version_project_done(projects_info):
+                        TO_APPLY.append('{}'.format(str(pr_number)))
+                        TO_APPLY_CAUSE_PROJECT_VERSION_ERROR.append(to_apply)
                     else:
                         IN_PROJECTS.append(to_apply)
             PRS.setdefault(milestone, [])
@@ -974,6 +987,9 @@ def prs_status(
         print(colors.magenta('\nIncluded in projects\n'))
         for x in IN_PROJECTS:
             print(colors.magenta('* {}'.format(x)))
+        print(colors.red('\nIncluded in version project but in Error State\n'))
+        for _pr_project in TO_APPLY_CAUSE_PROJECT_VERSION_ERROR:
+            print(colors.red('* {}'.format(_pr_project)))
         if CLOSED_PRS:
             print(colors.red('\nClosed PRS: "{}"\n'.format(
                 ' '.join(CLOSED_PRS)
