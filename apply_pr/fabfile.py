@@ -234,9 +234,11 @@ class PatchApplier(object):
                             " and unstaged changes. Press Enter to continue.")
                     )
             else:
-                sudo(
-                    "git apply {}{}".format(diff, reject),
-                )
+                from apply_pr.exceptions import ApplyError
+                with settings(abort_exception=ApplyError):
+                    sudo(
+                        "git apply {}{}".format(diff, reject),
+                    )
             empty_files = sudo(
                 'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
             )
@@ -779,7 +781,7 @@ def apply_pr(
         if as_diff:
             tqdm.write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
-            apply_remote_diff(
+            result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
                 reject=reject
             )
