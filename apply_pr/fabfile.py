@@ -1076,16 +1076,131 @@ def auto_changelog(milestone, show_issues=True):
     for key in label_keys:
         print ('\n## {key}\n'.format(key=key.upper()))
         for pull in pulls_desc[key]:
-            print(print_item(pull))
+            print(print_item(pull, milestone))
     if show_issues:
         print('\n# Issues:  \n')
         for issue in isses_desc:
-            print(print_item(issue))
+            print(print_item(issue, milestone))
     if other_desc:
         print('\n# Others :  \n')
         for pull in other_desc:
-            print(print_item(pull))
+            print(print_item(pull, milestone))
     return True
+
+SKIP_LABELS = ['internal', 'custom', 'to be merged','deployed', 'traduccions']
+GAS_LABEL = 'gas'
+ELEC_LABEL = u'eléctrico'
+OFICINA_VIRTUAL = 'oficinavirtual'
+TYPE_LABELS = [ELEC_LABEL, GAS_LABEL, OFICINA_VIRTUAL]
+TOP_FEATURE = u':fire: top feature'
+COMMON_KEY = u'COMÚN'
+
+def get_label(label_keys, labels, skip_custom=False):
+    if not skip_custom:
+        for label in labels:
+            name = label['name'].lower()
+            if name == 'custom':
+                return 'custom'
+            if name == 'internal':
+                return 'internal'
+    for label in labels:
+        name = label['name'].lower()
+        for key in label_keys:
+            if key in name:
+                return key
+    return 'others'
+
+def get_url_image(image, owner, repository):
+    headers = {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'Bearer %s' % github_config()['token']
+    }
+    url = "https://api.github.com/markdown"
+    data = {
+        'text': '''{image}'''.format(image=image),
+        'mode': 'gfm',
+        'context': '{owner}/{repository}'.format(owner=owner, repository=repository)
+    }
+    r = requests.api.post(url, headers=headers, json=data)
+    if r.status_code >= 200 and r.status_code < 300:
+        import re
+        text = r.content
+        urls = re.findall(
+            'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+',
+            text)
+        if urls:
+            return urls[0]
+        else:
+            return image
+    else:
+        return image
+def print_item_detail(item, owner, repository, key=None):
+    def find_all(a_str, sub):
+        start = 0
+        while True:
+            start = a_str.find(sub, start)
+            if start == -1: return
+            yield start
+            start += len(sub)  # use start += 1 to find overlapping matches
+
+    body = item['body'] or ''
+    body = re.sub('^# ', '#### ', body).strip()
+    body = re.sub('\n# ', '\n#### ', body).strip()
+    body = re.sub('^## ', '#### ', body).strip()
+    body = re.sub('\n## ', '\n#### ', body).strip()
+    body = re.sub(
+        '#(\d+)',
+        '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
+            owner, repository
+        ), body)
+    body = re.sub(
+        '- #(\d+)',
+        '- [:fa-github:  \g<1>](https://github.com/{}/{}/pull/\g<1>)'
+        ''.format(
+            owner, repository
+        ), body)
+    ## Search remove parts
+    idx = body.find('#### Afectaciones')
+    if idx > 0 :
+        body = body[:idx-1] + ''
+    idx_images = list(find_all(body, '![image]'))
+    if idx_images:
+        images_to_replace = {}
+        for idx_img in idx_images:
+            id_end_image = body.find(')', idx_img)
+            if id_end_image > 0:
+                image = body[idx_img:id_end_image+1]
+                new_url = get_url_image(image, owner, repository)
+                new_image = '![image]({})'.format(new_url)
+                images_to_replace[image] = new_image
+        for image, new_image in images_to_replace.items():
+            body = body.replace(image, new_image)
+
+    label = ''
+    if key:
+        for l in item['labels']:
+            if l['name'] not in SKIP_LABELS:
+                label += u' <span class="label" ' \
+                         u'style="background-color: #{color};">{name}</span>'.format(
+                                name=l['name'],
+                    color=l['color'])
+            label = '\n'+label
+    message = (
+        u'\n\n### {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
+            title=item['title'], number=item['number'],
+            url=item['url'], body=body, label=label
+        )
+    )
+    return message
+
+def print_item(item, milestone):
+    title_anchor = slugify(item['title'])
+    message = u'\n* {title} [:fa-plus-circle: detalles](../detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
+        title=item['title'], number=item['number'], url=item['url'],
+        milestone=milestone, title_anchor=title_anchor
+        )
+    return (message)
+
 
 
 @task
@@ -1093,68 +1208,6 @@ def create_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
     import copy
-
-    SKIP_LABELS = ['custom', 'to be merged','deployed', 'traduccions']
-    GAS_LABEL = 'gas'
-    ELEC_LABEL = u'eléctrico'
-    OFICINA_VIRTUAL = 'oficinavirtual'
-    TYPE_LABELS = [ELEC_LABEL, GAS_LABEL, OFICINA_VIRTUAL]
-    TOP_FEATURE = u':fire: top feature'
-    COMMON_KEY = u'COMÚN'
-    def get_label(label_keys, labels, skip_custom=False):
-        if not skip_custom:
-            for label in labels:
-                name = label['name'].lower()
-                if name == 'custom':
-                    return 'custom'
-        for label in labels:
-            name = label['name'].lower()
-            for key in label_keys:
-                if key in name:
-                    return key
-        return 'others'
-
-    def print_item(item):
-        title_anchor = slugify(item['title'])
-        message = u'\n* {title} [:fa-plus-circle: detalles](../detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
-            title=item['title'], number=item['number'], url=item['url'],
-            milestone=milestone, title_anchor=title_anchor
-            )
-        return (message)
-
-    def print_item_detail(item, key=None):
-        body = item['body'] or ''
-        body = re.sub('^# ', '#### ', body).strip()
-        body = re.sub('\n# ', '\n#### ', body).strip()
-        body = re.sub('^## ', '#### ', body).strip()
-        body = re.sub('\n## ', '\n#### ', body).strip()
-        body = re.sub(
-            '#(\d+)',
-            '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
-                owner, repository
-            ), body)
-        body = re.sub(
-            '- #(\d+)',
-            '- [:fa-github:  \g<1>](https://github.com/{}/{}/pull/\g<1>)'
-            ''.format(
-                owner, repository
-            ), body)
-        label = ''
-        if key:
-            for l in item['labels']:
-                if l['name'] not in SKIP_LABELS:
-                    label += u' <span class="label" ' \
-                             u'style="background-color: #{color};">{name}</span>'.format(
-                                    name=l['name'],
-                        color=l['color'])
-                label = '\n'+label
-        message = (
-            u'\n\n### {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
-                title=item['title'], number=item['number'],
-                url=item['url'], body=body, label=label
-            )
-        )
-        return message
 
     logger.info('Getting PRs from GitHub')
     headers = {
