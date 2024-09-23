@@ -1215,7 +1215,7 @@ def create_changelog(
         'Authorization': 'token %s' % github_config()['token']
     }
     url = ("https://api.github.com/search/issues"
-           "?q=is:pr+is:merged+milestone:{milestone}+repo:{owner}/{repository}"
+           "?q=is:pr+is:merged+milestone:{milestone}+repo:{owner}/{repository}+-label:internal+-label:custom"
            "&type=pr"
            "&sort=create"
            "d&order=asc"
