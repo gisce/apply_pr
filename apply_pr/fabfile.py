@@ -1332,7 +1332,7 @@ def create_changelog(
     with open('{}/{}'.format(changelog_path, top_file), 'w') as f:
         f.write("# TOP FEATURES version {milestone}\n".format(milestone=milestone))
         for pull in top_pulls:
-            f.write(print_item(pull))
+            f.write(print_item(pull, milestone))
 
 
     # CHANGELOGS
@@ -1346,15 +1346,15 @@ def create_changelog(
                 if pulls:
                     f.write('\n### {key}\n'.format(key=key.upper()))
                     for pull in pulls:
-                        f.write(print_item(pull))
+                        f.write(print_item(pull, milestone))
         if show_issues:
             f.write('\n# Issues:  \n')
             for issue in isses_desc:
-                f.write(print_item(issue))
+                f.write(print_item(issue, milestone))
         if other_desc:
             f.write('\n# Others :  \n')
             for pull in other_desc:
-                f.write(print_item(pull))
+                f.write(print_item(pull, milestone))
     logger.info('    {}/{}'.format(changelog_path, changelog_file))
     with open('{}/{}'.format(changelog_path, detailed_file) , 'w') as f:
         f.write("# Detalles version {milestone}\n".format(milestone=milestone))
@@ -1364,15 +1364,15 @@ def create_changelog(
                 pulls = pulls_sep[type_l].get(key,[])
                 if pulls:
                     f.write('\n### {key}\n'.format(key=key.upper()))
-                    for pull in pulls:
-                        f.write(print_item_detail(pull, key))
+                    for pull in tqdm(pulls, desc=' Generating info {} - {}'.format(type_l.upper(), key)):
+                        f.write(print_item_detail(pull, owner, repository, key=key))
         if show_issues:
             logger.info('\n# Issues:  \n')
             for issue in isses_desc:
-                f.write(print_item_detail(issue, key))
+                f.write(print_item_detail(issue, owner, repository, key=key))
         if other_desc:
             print('\n# Others :  \n')
-            for pull in other_desc:
-                f.write(print_item_detail(pull, key))
+            for pull in tqdm(other_desc, desc=' Generating info for OTHER INFO'):
+                f.write(print_item_detail(pull, owner, repository, key=key))
     logger.info('    {}/{}'.format(changelog_path, detailed_file))
     return True
