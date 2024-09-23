@@ -1248,6 +1248,7 @@ def create_changelog(
     pulls_desc = OrderedDict(
         [
             ('custom', []),
+            ('internal', []),
             ('bug', []),
             ('core', []),
             ('atr', []),
@@ -1311,6 +1312,8 @@ def create_changelog(
     logger.info('Total imported: {}'.format(number))
     pulls_sep[GAS_LABEL].pop('custom')
     pulls_sep[ELEC_LABEL].pop('custom')
+    pulls_sep[GAS_LABEL].pop('internal')
+    pulls_sep[ELEC_LABEL].pop('internal')
     pulls_sep[ELEC_LABEL].pop('traduccions')
     pulls_sep[GAS_LABEL].pop('traduccions')
     for key in ['gis', 'telegestio', 'medidas', 'facturacio']:
@@ -1318,6 +1321,7 @@ def create_changelog(
         pulls_sep['others'][key] = []
     pulls_sep['others'].pop('custom')
     pulls_sep['others'].pop('traduccions')
+    pulls_sep['others'].pop('internal')
     pulls_sep[COMMON_KEY] = pulls_sep.pop('others')
     index_bug = label_keys.index('bug')
     label_keys.pop(index_bug)
