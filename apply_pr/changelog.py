@@ -4,6 +4,9 @@ from __future__ import (
 )
 import requests
 import json
+import re
+import os
+from slugify import slugify
 
 from .github_utils import github_config
 from requests.exceptions import ConnectionError
@@ -167,6 +170,8 @@ def make_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
     import copy
+    if not os.path.exists(changelog_path):
+        os.makedirs(changelog_path)
     headers = {
         'Accept': 'application/vnd.github+json',
         'Authorization': 'Bearer %s' % github_config()['token']
