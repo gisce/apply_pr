@@ -937,7 +937,7 @@ def prs_status(
         pr_number = pull_info['pullRequest']['number']
         try:
             pull = pull_info['pullRequest']
-            projects_info = pull_info['projectItems']
+            projects_info = pull_info.get('projectItems', None)
             projects_show = ''
             to_apply = '{}'.format(str(pr_number))
             projects = ''
@@ -1001,7 +1001,7 @@ def prs_status(
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))
     for prmsg in ERRORS:
-            print('ERR\t{}'.format(prmsg))
+        print('ERR\t{}'.format(prmsg))
     if version:
         print(colors.magenta('\nIncluded in projects\n'))
         for x in IN_PROJECTS:
@@ -1010,9 +1010,15 @@ def prs_status(
         for _pr_project in TO_APPLY_CAUSE_PROJECT_VERSION_ERROR:
             print(colors.red('* {}'.format(_pr_project)))
         if CLOSED_PRS:
-            print(colors.red('\nClosed PRS: "{}"\n'.format(
+            print(colors.red('\n############# Closed PRS: "{}"\n'.format(
                 ' '.join(CLOSED_PRS)
             )))
+        if ERRORS:
+            print(colors.yellow('\n⚠ ️WARNING ⚠ ️! ERRORS IN PRS. MUST BE REVIEW\n'))
+            print(colors.yellow('##########################################\n'))
+            for prmsg in ERRORS:
+                print('ERR\t{}'.format(prmsg))
+            print(colors.yellow('############# END ERROR PRS ###############\n'))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
