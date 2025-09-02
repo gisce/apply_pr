@@ -1,6 +1,6 @@
 six
 fabric<2.0
-paramiko<2.10
+paramiko>=2.12.0
 osconf
 python-slugify<6
 requests
