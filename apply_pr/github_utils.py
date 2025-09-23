@@ -56,7 +56,7 @@ def oauth_login():
 
     print("\nTo authorize this script, follow these steps:")
     print("1. Visit this link in your browser: {}".format(verification_uri))
-    print("2. Enter this code: {} \ud83d\udd10\n".format(user_code))
+    print("2. Enter this code: {} \U0001f510\n".format(user_code))
 
     qr = qrcode.QRCode()
     qr.add_data(verification_uri)
