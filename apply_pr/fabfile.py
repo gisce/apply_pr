@@ -74,7 +74,7 @@ def get_info_from_url(pr):
            'repository': vals[4],
            'pr': vals[6]
         }
-        if len(vals) == 9 and vals[7] == 'commits':
+        if len(vals) == 9 and vals[7] in ('commits', 'changes'):
             info['from_commit'] = vals[8]
         return info
     else:
