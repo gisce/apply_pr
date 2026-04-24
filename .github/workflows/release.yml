@@ -13,11 +13,6 @@ jobs:
       image: python:2.7-slim
     steps:
       - uses: actions/checkout@v4
-      - name: Install system dependencies
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends binutils
-          rm -rf /var/lib/apt/lists/*
       - name: Install Python build dependencies
         run: |
           python -m pip install --upgrade "pip<21" "setuptools<45" "wheel<0.35" "twine<2" "virtualenv<20.22" "pyinstaller==3.3.1"
