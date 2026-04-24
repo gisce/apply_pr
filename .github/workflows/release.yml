@@ -15,6 +15,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install system dependencies
         run: |
+          cat > /etc/apt/sources.list <<'EOF'
+          deb http://archive.debian.org/debian buster main
+          deb http://archive.debian.org/debian-security buster/updates main
+          EOF
+          printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99no-check-valid
           apt-get update
           apt-get install -y --no-install-recommends binutils
           rm -rf /var/lib/apt/lists/*
