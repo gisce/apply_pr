@@ -43,7 +43,7 @@ jobs:
           generate_release_notes: true
       - run: rm -r dist
       - name: Publish a Python distribution to PyPI
-        if: ${{ contains(github.ref, '-rc') }} == false
+        if: ${{ !contains(github.ref, '-rc') }}
         env:
           PYPI_MASTER_TOKEN: ${{ secrets.PYPI_MASTER_TOKEN }}
           PYTHON_TOKEN: ${{ secrets.PYTHON_TOKEN }}
