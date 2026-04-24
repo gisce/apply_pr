@@ -44,14 +44,12 @@ jobs:
       - name: Publish a Python distribution to PyPI
         if: ${{ !contains(github.ref, '-rc') }}
         env:
-          PYPI_MASTER_TOKEN: ${{ secrets.PYPI_MASTER_TOKEN }}
-          PYTHON_TOKEN: ${{ secrets.PYTHON_TOKEN }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_MASTER_TOKEN }}
         run: |
-          export PYPI_TOKEN="${PYPI_MASTER_TOKEN:-${PYTHON_TOKEN:-}}"
-          if [ -z "${PYPI_TOKEN}" ]; then
-            echo "No PYPI_MASTER_TOKEN or PYTHON_TOKEN configured; skipping PyPI publish"
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "PYPI_MASTER_TOKEN not configured; skipping PyPI publish"
             exit 0
           fi
-          echo "::add-mask::${PYPI_TOKEN}"
           python setup.py sdist bdist_wheel
-          twine upload --non-interactive -u __token__ -p "${PYPI_TOKEN}" dist/*
+          python -m twine upload dist/*
