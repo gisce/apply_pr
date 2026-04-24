@@ -44,6 +44,19 @@ jobs:
       - run: rm -r dist
       - name: Publish a Python distribution to PyPI
         if: ${{ contains(github.ref, '-rc') }} == false
-        uses: conchylicultor/pypi-build-publish@v1
-        with:
-          pypi-token: ${{ secrets.PYPI_TOKEN }}
+        env:
+          PYPI_MASTER_TOKEN: ${{ secrets.PYPI_MASTER_TOKEN }}
+          PYTHON_TOKEN: ${{ secrets.PYTHON_TOKEN }}
+        run: |
+          export PYPI_TOKEN="${PYPI_MASTER_TOKEN:-${PYTHON_TOKEN:-}}"
+          if [ -z "${PYPI_TOKEN}" ]; then
+            echo "No PYPI_MASTER_TOKEN or PYTHON_TOKEN configured; skipping PyPI publish"
+            exit 0
+          fi
+          echo "::add-mask::${PYPI_TOKEN}"
+          python -m pip install --upgrade pip setuptools wheel twine virtualenv
+          python -m virtualenv venv
+          . venv/bin/activate
+          pip install --upgrade pip setuptools wheel
+          python setup.py sdist bdist_wheel
+          twine upload --non-interactive -u __token__ -p "${PYPI_TOKEN}" dist/*
