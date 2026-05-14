@@ -97,6 +97,6 @@ def oauth_login():
         user_info = requests.get("https://api.github.com/user", headers=headers)
         user_data = user_info.json()
         print(
-            "\n\ud83d\udc4b Welcome, {}!".format(
+            "\n\U0001f44b Welcome, {}!".format(
                 user_data['login']))
     return token
