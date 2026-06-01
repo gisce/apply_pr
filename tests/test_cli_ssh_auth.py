@@ -40,11 +40,13 @@ import apply_pr.cli as cli
 class ConfigureSSHAuthTest(unittest.TestCase):
     def setUp(self):
         os.environ.pop('SSH_PRIVATE_KEY', None)
+        os.environ.pop('SSH_PRIVATE_KEY_FILE', None)
         cli.cleanup_ssh_private_key_file()
         fake_env.__dict__.clear()
 
     def tearDown(self):
         os.environ.pop('SSH_PRIVATE_KEY', None)
+        os.environ.pop('SSH_PRIVATE_KEY_FILE', None)
         cli.cleanup_ssh_private_key_file()
         fake_env.__dict__.clear()
 
@@ -53,6 +55,14 @@ class ConfigureSSHAuthTest(unittest.TestCase):
 
         self.assertTrue(fake_env.use_ssh_config)
         self.assertFalse(hasattr(fake_env, 'key_filename'))
+
+    def test_uses_ssh_private_key_file_when_configured(self):
+        os.environ['SSH_PRIVATE_KEY_FILE'] = '/tmp/sastre_id_rsa'
+
+        cli.configure_ssh_auth()
+
+        self.assertTrue(fake_env.use_ssh_config)
+        self.assertEqual(fake_env.key_filename, '/tmp/sastre_id_rsa')
 
     def test_writes_ssh_private_key_to_restricted_temp_file(self):
         os.environ['SSH_PRIVATE_KEY'] = '-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----'

@@ -107,6 +107,11 @@ def cleanup_ssh_private_key_file():
 def configure_ssh_auth():
     global _SSH_PRIVATE_KEY_FILE
     env.use_ssh_config = True
+    private_key_file = os.environ.get('SSH_PRIVATE_KEY_FILE')
+    if private_key_file:
+        cleanup_ssh_private_key_file()
+        env.key_filename = private_key_file
+        return
     private_key = os.environ.get('SSH_PRIVATE_KEY')
     if not private_key:
         return
