@@ -1,6 +1,9 @@
 import logging
 import os
 import sys
+import atexit
+import stat
+import tempfile
 import six
 if six.PY2:
     from urlparse import urlparse
@@ -13,6 +16,7 @@ from fabric import colors
 import click
 
 DEFAULT_LOG_LEVEL = 'ERROR'
+_SSH_PRIVATE_KEY_FILE = None
 
 github_options = [
     click.option('--owner', help='GitHub owner name', default='gisce', show_default=True),
@@ -93,6 +97,35 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
+def cleanup_ssh_private_key_file():
+    global _SSH_PRIVATE_KEY_FILE
+    if _SSH_PRIVATE_KEY_FILE and os.path.exists(_SSH_PRIVATE_KEY_FILE):
+        os.unlink(_SSH_PRIVATE_KEY_FILE)
+    _SSH_PRIVATE_KEY_FILE = None
+
+
+def configure_ssh_auth():
+    global _SSH_PRIVATE_KEY_FILE
+    env.use_ssh_config = True
+    private_key = os.environ.get('SSH_PRIVATE_KEY')
+    if not private_key:
+        return
+    cleanup_ssh_private_key_file()
+    fd, key_filename = tempfile.mkstemp(prefix='apply_pr_ssh_', suffix='.key')
+    try:
+        if not private_key.endswith('\n'):
+            private_key += '\n'
+        if six.PY3:
+            private_key = private_key.encode('utf-8')
+        os.write(fd, private_key)
+    finally:
+        os.close(fd)
+    os.chmod(key_filename, stat.S_IRUSR | stat.S_IWUSR)
+    env.key_filename = key_filename
+    _SSH_PRIVATE_KEY_FILE = key_filename
+    atexit.register(cleanup_ssh_private_key_file)
+
+
 @click.command('apply_pr')
 @add_options(apply_pr_options)
 def deprecated(**kwargs):
@@ -151,6 +184,7 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
+    configure_ssh_auth()
     if not prs and not pr:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
@@ -218,6 +252,7 @@ def check_pr(pr, force, src, owner, repository, host):
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
+    configure_ssh_auth()
 
     configure_logging()
 
