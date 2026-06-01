@@ -25,6 +25,9 @@ fake_fabric_api.env = fake_env
 fake_fabric_colors.red = lambda text: text
 fake_fabric_colors.yellow = lambda text: text
 fake_fabric_colors.green = lambda text: text
+fake_fabric.tasks = fake_fabric_tasks
+fake_fabric.api = fake_fabric_api
+fake_fabric.colors = fake_fabric_colors
 
 sys.modules.setdefault('fabric', fake_fabric)
 sys.modules.setdefault('fabric.tasks', fake_fabric_tasks)
