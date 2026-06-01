@@ -2,7 +2,6 @@
 from __future__ import absolute_import, unicode_literals
 
 import os
-import stat
 import sys
 import types
 import unittest
@@ -39,15 +38,11 @@ import apply_pr.cli as cli
 
 class ConfigureSSHAuthTest(unittest.TestCase):
     def setUp(self):
-        os.environ.pop('SSH_PRIVATE_KEY', None)
-        os.environ.pop('SSH_PRIVATE_KEY_FILE', None)
-        cli.cleanup_ssh_private_key_file()
+        os.environ.pop('APPLY_PR_SSH_KEY_PATH', None)
         fake_env.__dict__.clear()
 
     def tearDown(self):
-        os.environ.pop('SSH_PRIVATE_KEY', None)
-        os.environ.pop('SSH_PRIVATE_KEY_FILE', None)
-        cli.cleanup_ssh_private_key_file()
+        os.environ.pop('APPLY_PR_SSH_KEY_PATH', None)
         fake_env.__dict__.clear()
 
     def test_enables_ssh_config_without_private_key(self):
@@ -56,32 +51,13 @@ class ConfigureSSHAuthTest(unittest.TestCase):
         self.assertTrue(fake_env.use_ssh_config)
         self.assertFalse(hasattr(fake_env, 'key_filename'))
 
-    def test_uses_ssh_private_key_file_when_configured(self):
-        os.environ['SSH_PRIVATE_KEY_FILE'] = '/tmp/sastre_id_rsa'
+    def test_uses_apply_pr_ssh_key_path_when_configured(self):
+        os.environ['APPLY_PR_SSH_KEY_PATH'] = '/tmp/sastre_id_rsa'
 
         cli.configure_ssh_auth()
 
         self.assertTrue(fake_env.use_ssh_config)
         self.assertEqual(fake_env.key_filename, '/tmp/sastre_id_rsa')
-
-    def test_writes_ssh_private_key_to_restricted_temp_file(self):
-        os.environ['SSH_PRIVATE_KEY'] = '-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----'
-
-        cli.configure_ssh_auth()
-
-        key_filename = fake_env.key_filename
-        self.assertTrue(os.path.exists(key_filename))
-        file_mode = stat.S_IMODE(os.stat(key_filename).st_mode)
-        self.assertEqual(file_mode, stat.S_IRUSR | stat.S_IWUSR)
-        with open(key_filename, 'rb') as key_file:
-            key_contents = key_file.read()
-        self.assertEqual(
-            key_contents,
-            b'-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----\n'
-        )
-
-        cli.cleanup_ssh_private_key_file()
-        self.assertFalse(os.path.exists(key_filename))
 
 
 if __name__ == '__main__':

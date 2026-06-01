@@ -9,8 +9,8 @@ To use you must [generate an OAuth token](https://github.com/settings/tokens/new
 from GitHub and set to the `GITHUB_TOKEN` environment variable.
 
 SSH connections use the standard `~/.ssh/config` file. If the private key must
-be provided explicitly, set `SSH_PRIVATE_KEY_FILE` with the key file path or
-`SSH_PRIVATE_KEY` with the PEM key contents before running the command.
+be provided explicitly, set `APPLY_PR_SSH_KEY_PATH` with the key file path
+before running the command.
 
 ## Command line scripts
 

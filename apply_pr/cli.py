@@ -1,9 +1,6 @@
 import logging
 import os
 import sys
-import atexit
-import stat
-import tempfile
 import six
 if six.PY2:
     from urlparse import urlparse
@@ -16,7 +13,6 @@ from fabric import colors
 import click
 
 DEFAULT_LOG_LEVEL = 'ERROR'
-_SSH_PRIVATE_KEY_FILE = None
 
 github_options = [
     click.option('--owner', help='GitHub owner name', default='gisce', show_default=True),
@@ -97,38 +93,11 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-def cleanup_ssh_private_key_file():
-    global _SSH_PRIVATE_KEY_FILE
-    if _SSH_PRIVATE_KEY_FILE and os.path.exists(_SSH_PRIVATE_KEY_FILE):
-        os.unlink(_SSH_PRIVATE_KEY_FILE)
-    _SSH_PRIVATE_KEY_FILE = None
-
-
 def configure_ssh_auth():
-    global _SSH_PRIVATE_KEY_FILE
     env.use_ssh_config = True
-    private_key_file = os.environ.get('SSH_PRIVATE_KEY_FILE')
-    if private_key_file:
-        cleanup_ssh_private_key_file()
-        env.key_filename = private_key_file
-        return
-    private_key = os.environ.get('SSH_PRIVATE_KEY')
-    if not private_key:
-        return
-    cleanup_ssh_private_key_file()
-    fd, key_filename = tempfile.mkstemp(prefix='apply_pr_ssh_', suffix='.key')
-    try:
-        if not private_key.endswith('\n'):
-            private_key += '\n'
-        if six.PY3:
-            private_key = private_key.encode('utf-8')
-        os.write(fd, private_key)
-    finally:
-        os.close(fd)
-    os.chmod(key_filename, stat.S_IRUSR | stat.S_IWUSR)
-    env.key_filename = key_filename
-    _SSH_PRIVATE_KEY_FILE = key_filename
-    atexit.register(cleanup_ssh_private_key_file)
+    ssh_key_path = os.environ.get('APPLY_PR_SSH_KEY_PATH')
+    if ssh_key_path:
+        env.key_filename = ssh_key_path
 
 
 @click.command('apply_pr')
