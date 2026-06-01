@@ -93,6 +93,13 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
+def configure_ssh_auth():
+    env.use_ssh_config = True
+    ssh_key_path = os.environ.get('APPLY_PR_SSH_KEY_PATH')
+    if ssh_key_path:
+        env.key_filename = ssh_key_path
+
+
 @click.command('apply_pr')
 @add_options(apply_pr_options)
 def deprecated(**kwargs):
@@ -151,6 +158,7 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
+    configure_ssh_auth()
     if not prs and not pr:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
@@ -218,6 +226,7 @@ def check_pr(pr, force, src, owner, repository, host):
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
+    configure_ssh_auth()
 
     configure_logging()
 

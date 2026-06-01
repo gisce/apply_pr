@@ -8,6 +8,10 @@ API](https://developer.github.com/v3/repos/deployments/) from GitHub.
 To use you must [generate an OAuth token](https://github.com/settings/tokens/new)
 from GitHub and set to the `GITHUB_TOKEN` environment variable.
 
+SSH connections use the standard `~/.ssh/config` file. If the private key must
+be provided explicitly, set `APPLY_PR_SSH_KEY_PATH` with the key file path
+before running the command.
+
 ## Command line scripts
 
 This repository uses the [Click](http://click.pocoo.org/5/) package to
