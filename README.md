@@ -109,6 +109,7 @@ Usage: check_pr [OPTIONS]
 Options:
   --pr TEXT          Pull request to check  [required]
   --host TEXT        Host to check  [required]
+  --proxy TEXT       SSH proxy/jump host
   --owner TEXT       GitHub owner name  [default: gisce]
   --repository TEXT  GitHub repository name  [default: erp]
   --src TEXT         Remote src path  [default: /home/erp/src]
