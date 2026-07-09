@@ -10,7 +10,8 @@ from GitHub and set to the `GITHUB_TOKEN` environment variable.
 
 SSH connections use the standard `~/.ssh/config` file. If the private key must
 be provided explicitly, set `APPLY_PR_SSH_KEY_PATH` with the key file path
-before running the command.
+before running the command. When the target host requires a jump server, pass
+`--proxy user@proxy-host`, equivalent to using `ssh -J user@proxy-host`.
 
 ## Command line scripts
 
@@ -46,6 +47,7 @@ Usage: deploy [OPTIONS]
 Options:
   --pr TEXT              Pull request to deploy  [required]
   --host TEXT            Host to where to be deployed  [required]
+  --proxy TEXT           SSH proxy/jump host
   --from-number INTEGER  From commit number
   --from-commit TEXT     From commit hash (included)
   --force-hostname TEXT  Force hostname  [default: False]
@@ -107,6 +109,7 @@ Usage: check_pr [OPTIONS]
 Options:
   --pr TEXT          Pull request to check  [required]
   --host TEXT        Host to check  [required]
+  --proxy TEXT       SSH proxy/jump host
   --owner TEXT       GitHub owner name  [default: gisce]
   --repository TEXT  GitHub repository name  [default: erp]
   --src TEXT         Remote src path  [default: /home/erp/src]

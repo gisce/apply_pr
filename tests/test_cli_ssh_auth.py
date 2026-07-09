@@ -50,6 +50,7 @@ class ConfigureSSHAuthTest(unittest.TestCase):
 
         self.assertTrue(fake_env.use_ssh_config)
         self.assertFalse(hasattr(fake_env, 'key_filename'))
+        self.assertFalse(hasattr(fake_env, 'gateway'))
 
     def test_uses_apply_pr_ssh_key_path_when_configured(self):
         os.environ['APPLY_PR_SSH_KEY_PATH'] = '/tmp/sastre_id_rsa'
@@ -58,6 +59,12 @@ class ConfigureSSHAuthTest(unittest.TestCase):
 
         self.assertTrue(fake_env.use_ssh_config)
         self.assertEqual(fake_env.key_filename, '/tmp/sastre_id_rsa')
+
+    def test_uses_proxy_as_ssh_gateway_when_configured(self):
+        cli.configure_ssh_auth(proxy='gisce@proxy.example.net')
+
+        self.assertTrue(fake_env.use_ssh_config)
+        self.assertEqual(fake_env.gateway, 'gisce@proxy.example.net')
 
 
 if __name__ == '__main__':

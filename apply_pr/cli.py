@@ -22,6 +22,7 @@ github_options = [
 
 deployment_options = [
     click.option("--host", help="Host to apply", required=True),
+    click.option('--proxy', help='SSH proxy/jump host'),
     click.option('--src', help='Remote src path',  default='/home/erp/src', show_default=True),
     click.option('--sudo_user', help='Sudo user from the host', default='erp', show_default=True),
 ]
@@ -93,8 +94,10 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
-def configure_ssh_auth():
+def configure_ssh_auth(proxy=None):
     env.use_ssh_config = True
+    if proxy:
+        env.gateway = proxy
     ssh_key_path = os.environ.get('APPLY_PR_SSH_KEY_PATH')
     if ssh_key_path:
         env.key_filename = ssh_key_path
@@ -121,7 +124,8 @@ def apply_pr(
     pr, host, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
-    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False, no_set_label=False
+    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False,
+    no_set_label=False, proxy=None
 ):
     """
     Deploy a PR into a remote server via Fabric
@@ -129,6 +133,8 @@ def apply_pr(
     :type pr:                   str
     :param host:                Host to connect
     :type host:                 str
+    :param proxy:               SSH proxy/jump host
+    :type proxy:                str
     :param from_number:         Number of the commit to deploy from
     :type from_number:          str
     :param from_commit:         Hash of the commit to deploy from
@@ -158,7 +164,7 @@ def apply_pr(
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
-    configure_ssh_auth()
+    configure_ssh_auth(proxy=proxy)
     if not prs and not pr:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
@@ -214,7 +220,10 @@ def deploy(**kwargs):
 @click.option('--force/--no-force', default=False,
               help='Forces the usage of this command')
 @add_options(deployment_options)
-def check_pr(pr, force, src, owner, repository, host):
+def check_pr(
+    pr, force, src, host, owner='gisce', repository='erp', proxy=None,
+    sudo_user='erp'
+):
     """DEPRECATED - Check for applied commits on PR"""
     print(colors.red("This option has been deprecated as it doesn't work"))
     if not force:
@@ -226,7 +235,7 @@ def check_pr(pr, force, src, owner, repository, host):
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
-    configure_ssh_auth()
+    configure_ssh_auth(proxy=proxy)
 
     configure_logging()
 
