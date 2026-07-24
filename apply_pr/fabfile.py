@@ -11,6 +11,7 @@ import io
 import re
 import pprint
 
+import six
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task, env, prefix
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
@@ -21,14 +22,25 @@ from osconf import config_from_environment
 from slugify import slugify
 from os.path import isdir
 import requests
-import StringIO
+from io import BytesIO
+from six import string_types, PY2
+from tqdm import tqdm
+if PY2:
+    input = raw_input
+else:
+    pass
+
 from collections import OrderedDict
 
-from tqdm import tqdm
+
+
 from packaging import version as vsn
 from giscemultitools.githubutils.objects import GHAPIRequester
 from giscemultitools.githubutils.utils import GithubUtils
 
+from requests.exceptions import ConnectionError
+from .github_utils import github_config, is_github_token_valid
+from .changelog import make_changelog
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +49,19 @@ for k in output.keys():
     output[k] = False
 
 
-def github_config(**config):
-    return config_from_environment('GITHUB', ['token'], **config)
-
-
 def apply_pr_config(**config):
     return config_from_environment('APPLY_PR', **config)
 
 
 config = apply_pr_config()
+
 if config.get('logging'):
     logging.basicConfig(level=logging.INFO)
+
+USE_SUDO = True
+if config.get('no_sudo_mode'):
+    from fabric.api import run as sudo
+    USE_SUDO = False
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
@@ -60,7 +74,7 @@ def get_info_from_url(pr):
            'repository': vals[4],
            'pr': vals[6]
         }
-        if len(vals) == 9 and vals[7] == 'commits':
+        if len(vals) == 9 and vals[7] in ('commits', 'changes'):
             info['from_commit'] = vals[8]
         return info
     else:
@@ -80,7 +94,7 @@ def upload_diff(pr_number, src='/home/erp/src', repository='erp', sudo_user='erp
     diff_path = '{}/{}.diff'.format(remote_dir, pr_number)
     with io.open('deploy/patches/{}.diff'.format(pr_number), 'r', encoding='utf-8') as dfile:
         logger.info('Uploading diff {}.diff'.format(pr_number))
-        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=True)
+        put('deploy/patches/{}.diff'.format(pr_number), temp_dir, use_sudo=USE_SUDO)
     sudo("mv %s %s" % (temp_dir, diff_path))
     sudo("chown {0}: {1}".format(sudo_user, diff_path))
 
@@ -111,7 +125,7 @@ def upload_patches(
                     from_commit = None
         logger.info('Uploading patch {}'.format(patch))
         put('deploy/patches/%s/%s' % (pr_number, patch),
-            temp_dir, use_sudo=True)
+            temp_dir, use_sudo=USE_SUDO)
         remote_patch_file = '{}/{}'.format(temp_dir, patch)
         sudo("mv %s %s" % (remote_patch_file, remote_dir))
     sudo("chown -R {0}: {1}".format(sudo_user, remote_dir))
@@ -125,7 +139,7 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            PatchApplier.apply(diff_file, reject=reject)
+            PatchApplier.apply(diff_file, reject=reject, sudo_user=sudo_user)
 
 
 @task
@@ -134,7 +148,7 @@ def apply_remote_patches(
     auto_exit=True
 ):
     from_commit = None
-    if isinstance(from_patch, basestring) and len(from_patch) == 40:
+    if isinstance(from_patch, string_types) and len(from_patch) == 40:
         from_commit = from_patch
         logger.info('Applying from commit {}'.format(from_commit))
         from_patch = 0
@@ -192,8 +206,12 @@ class PatchApplier(object):
             raise RuntimeError("Unable to restore stashed changes")
 
     @staticmethod
-    def apply(diff, stash=True, reject=False, message=None):
-        need_stash = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om")
+    def apply(diff, stash=True, reject=False, message=None, sudo_user='erp'):
+        old_prefix = env.sudo_prefix
+        env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
+        need_stash = sudo(
+            "test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om", user=sudo_user
+        )
         stashed = False
         if stash and not need_stash:
             stash = False
@@ -209,8 +227,6 @@ class PatchApplier(object):
             else:
                 reject = ''
             print(colors.green('Applying diff {}'.format(diff)))
-            old_prefix = env.sudo_prefix
-            env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
             if reject:
                 try:
                     sudo(
@@ -219,7 +235,7 @@ class PatchApplier(object):
                 except:
                     print(colors.yellow('Some rejects ...'))
                 rej = sudo(
-                    "git status | grep rej;echo yes", user='erp'
+                    "git status | grep rej;echo yes", user=sudo_user
                     )
                 if rej != 'yes':
                     prompt(
@@ -229,9 +245,11 @@ class PatchApplier(object):
                             " and unstaged changes. Press Enter to continue.")
                     )
             else:
-                sudo(
-                    "git apply {}{}".format(diff, reject),
-                )
+                from apply_pr.exceptions import ApplyError
+                with settings(abort_exception=ApplyError):
+                    sudo(
+                        "git apply {}{}".format(diff, reject),
+                    )
             empty_files = sudo(
                 'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
             )
@@ -242,7 +260,7 @@ class PatchApplier(object):
                 )
             else:
                 print(colors.green('Nothing to commit! Continue'))
-            env.sudo_prefix = old_prefix
+
         except Exception as e:
             print(colors.red('\U000026D4 Error applying diff'))
             raise
@@ -250,6 +268,7 @@ class PatchApplier(object):
             if stash and stashed:
                 print(colors.yellow('Unstashing...'))
                 PatchApplier.restore_stash()
+            env.sudo_prefix = old_prefix
 
 
 class GitApplier(object):
@@ -268,16 +287,21 @@ class GitApplier(object):
         self.catch_result(result)
 
     def catch_result(self, result):
-        for line in result.decode('utf-8').split('\n'):
+        result_failed = result.failed
+        if six.PY3:
+            result_text = bytes(result, 'utf-8').decode('utf-8')
+        else:
+            result_text = result.decode('utf-8')
+        for line in result_text.split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))
                 self.pbar.update()
-        if result.failed:
-            if "git config --global user.email" in result.decode('utf-8'):
+        if result_failed:
+            if "git config --global user.email" in result_text:
                 logger.error(
                     "Need to configure git for this user\n"
                 )
-                raise GitHubException(result)
+                raise GitHubException(result_text)
             try:
                 raise WiggleException
             except WiggleException:
@@ -405,6 +429,9 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
 
 @task
 def get_commits(pr_number, owner='gisce', repository='erp'):
+    def is_merge_commit(commit):
+        return bool(len(commit['parents']) > 1)
+
     # Pagination documentation: https://developer.github.com/v3/#pagination
     def parse_github_links_header(links_header):
         ret_links = {}
@@ -433,11 +460,20 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
                 '    - Getting extra commits page {}'.format(url_page)))
             r = requests.get(links['next'], headers=headers)
             commits += json.loads(r.text)
+
+    for commit in commits:
+        commit['commit']['is_merge_commit'] = is_merge_commit(commit)
+
     return commits
 
 
 @task
 def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+    try:
+        local("mkdir -p %s" % 'deploy/patches')
+    except BaseException as e:
+        logger.error('Permission denied to write deploy/patches in the current directory')
+        raise
     diff_path = "deploy/patches/{}.diff".format(pr_number)
     tqdm.write('Exporting diff from Github')
     headers = {
@@ -448,7 +484,7 @@ def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
         owner=owner, repository=repository, pr_number=pr_number
     )
     r = requests.get(url, headers=headers)
-    with open(diff_path, 'w') as f:
+    with open(diff_path, 'wb') as f:
         f.write(r.text.encode('utf-8'))
 
 
@@ -472,7 +508,7 @@ def export_patches_from_github(
         pr_number, from_commit and '@{}'.format(from_commit) or ''
     ))
     for commit in tqdm(commits, desc='Downloading'):
-        if commit['commit']['message'].lower().startswith('merge'):
+        if commit['commit']['is_merge_commit']:
             logger.info('Skipping merge commit {sha}: {message}'.format(
                 sha=commit['sha'], message=commit['commit']['message']
             ))
@@ -490,7 +526,7 @@ def export_patches_from_github(
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (patch_number, message)
-        with open(os.path.join(patch_folder, filename), 'w') as patch:
+        with open(os.path.join(patch_folder, filename), 'wb') as patch:
             logger.info('Exporting patch %s.' % filename)
             patch.write(r.text.encode('utf-8'))
 
@@ -634,7 +670,7 @@ def export_patches_pr(pr_number, owner='gisce', repository='erp'):
     try:
         local("mkdir -p deploy/patches/%s" % pr_number)
     except BaseException as e:
-        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(patch_folder))
+        logger.error('Permission denied to write deploy/patches/{} in the current directory'.format(pr_number))
         raise
     from_commit, to_commit, branch = find_from_to_commits(
         pr_number, owner=owner, repository=repository
@@ -655,7 +691,7 @@ def check_it_exists(src='/home/erp/src', repository='erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
         res = sudo("ls {}/{}".format(src, repository))
         if res.return_code:
-            message = "The repository does not exist or cannot be found"
+            message = "The repository {} does not exist or cannot be found in {}".format(repository, src)
             tqdm.write(colors.red(message))
             abort(message)
 
@@ -712,7 +748,7 @@ def apply_pr(
                 exit(-1)
         else:
             tqdm.write(colors.blue('\U0001F62F Not found...'))
-        resp = raw_input('Deploy from {}? (y/n): '.format(from_commit or '0'))
+        resp = input('Deploy from {}? (y/n): '.format(from_commit or '0'))
         if resp.upper() != 'Y':
             exit(-1)
     deploy_id = mark_to_deploy(pr_number,
@@ -756,7 +792,7 @@ def apply_pr(
         if as_diff:
             tqdm.write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
-            apply_remote_diff(
+            result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
                 reject=reject
             )
@@ -780,7 +816,8 @@ def apply_pr(
                            owner=owner,
                            repository=repository,
                            pr_number=pr_number,
-                           no_set_label=no_set_label
+                           no_set_label=no_set_label,
+                           environment=environment
                            )
         tqdm.write(colors.green("Deploy success \U0001F680"))
         return True
@@ -788,7 +825,7 @@ def apply_pr(
         logger.error(e)
         mark_deploy_status(deploy_id,
                            state='error',
-                           description=e.message,
+                           description='{}'.format(e),
                            owner=owner,
                            repository=repository,
                            no_set_label=no_set_label
@@ -820,7 +857,7 @@ def check_pr(pr_number, src='/home/erp/src', owner='gisce', repository='erp', su
     with settings(warn_only=True, sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             for commit in commits:
-                fh = StringIO.StringIO()
+                fh = BytesIO()
                 commit_message = (
                     commit['commit']['message']
                 ).replace('"', '\\"')
@@ -856,15 +893,45 @@ def prs_status(
     PRS = {}
     ERRORS = []
     TO_APPLY = []
+    TO_APPLY_CAUSE_PROJECT_VERSION_ERROR = []
+    CLOSED_PRS = []
     IN_PROJECTS = []
     rep = GHAPIRequester(owner, repository)
-    for pr_number in tqdm(pr_list, desc='Getting pr data from Github'):
-        try:
-            pull_info = GithubUtils.plain_get_commits_sha_from_merge_commit(
-                rep.get_pull_request_projects_and_commits(int(pr_number))
+    def get_prs_info(plist):
+        res = []
+        for _pr in tqdm(list(set(plist)), desc='Getting pr data from Github'):
+            try:
+                res.append(
+                    GithubUtils.plain_get_commits_sha_from_merge_commit(
+                        rep.get_pull_request_projects_and_commits(int(_pr))
+                    )
+                )
+            except Exception:
+                res.append({'pullRequest': {'number': _pr}})
+        if res:
+            max_meged_at = '2999-12-27T06:22:04Z'
+            return sorted(
+                res, key=lambda _p: (
+                    _p['pullRequest'].get('mergedAt', max_meged_at) or max_meged_at,
+                    _p['pullRequest'].get('createdAt') if (_p['pullRequest'].get('mergedAt', max_meged_at) or max_meged_at) == max_meged_at else ''
+                )
             )
+        return res
+
+    def check_version_project_done(project_items):
+        if version:
+            parsed_version = version.split('.')
+            parsed_version = '{}.{}'.format(parsed_version[0], parsed_version[1])
+            for _project in project_items:
+                if _project['project_name'].startswith(parsed_version) and _project['card_state'] != 'Done':
+                    return False
+        return True
+
+    for pull_info in tqdm(get_prs_info(pr_list), desc='Process PRs info'):
+        pr_number = pull_info['pullRequest']['number']
+        try:
             pull = pull_info['pullRequest']
-            projects_info = pull_info['projectItems']
+            projects_info = pull_info.get('projectItems', None)
             projects_show = ''
             to_apply = '{}'.format(str(pr_number))
             projects = ''
@@ -876,24 +943,28 @@ def prs_status(
                     projects_show = 'PROJECTS => {}'.format(projects)
                     to_apply += ' ({})'.format(projects)
             state_pr = pull['state']
-            #merged_at = pull['merged_at']
+            merged_at = pull['mergedAt']
+            created_at = pull['createdAt']
             milestone = pull['milestone'] or '(With out Milestone)'
             message = (
                 'PR {number}=>'
                 ' state {state_pr}'
                 ' merged_at {merged_at}'
+                ' created_at {created_at}'
                 ' milestone {milestone}'
                 ' {projects} '.format(
                     number=pr_number, state_pr=state_pr,
-                    merged_at="", milestone=milestone,
-                    projects=projects_show
+                    merged_at=merged_at, created_at=created_at,
+                    milestone=milestone, projects=projects_show
                 )
             )
             if version:
                 if milestone != '(With out Milestone)' and vsn.parse(milestone) <= vsn.parse(version):
                     if state_pr.upper() != 'MERGED':
                         message = colors.yellow(message)
-                        if not projects:
+                        if state_pr.upper() == 'CLOSED':
+                            CLOSED_PRS.append(to_apply)
+                        elif not projects:
                             TO_APPLY.append(to_apply)
                         else:
                             IN_PROJECTS.append(to_apply)
@@ -903,6 +974,9 @@ def prs_status(
                     message = colors.red(message)
                     if not projects:
                         TO_APPLY.append(to_apply)
+                    elif not check_version_project_done(projects_info):
+                        TO_APPLY.append('{}'.format(str(pr_number)))
+                        TO_APPLY_CAUSE_PROJECT_VERSION_ERROR.append(to_apply)
                     else:
                         IN_PROJECTS.append(to_apply)
             PRS.setdefault(milestone, [])
@@ -921,12 +995,24 @@ def prs_status(
         for prmsg in PRS[milestone]:
             print('\t{}'.format(prmsg))
     for prmsg in ERRORS:
-            print('ERR\t{}'.format(prmsg))
+        print('ERR\t{}'.format(prmsg))
     if version:
-        TO_APPLY = sorted(list(set(TO_APPLY)))
         print(colors.magenta('\nIncluded in projects\n'))
         for x in IN_PROJECTS:
             print(colors.magenta('* {}'.format(x)))
+        print(colors.red('\nIncluded in version project but in Error State\n'))
+        for _pr_project in TO_APPLY_CAUSE_PROJECT_VERSION_ERROR:
+            print(colors.red('* {}'.format(_pr_project)))
+        if CLOSED_PRS:
+            print(colors.red('\n############# Closed PRS: "{}"\n'.format(
+                ' '.join(CLOSED_PRS)
+            )))
+        if ERRORS:
+            print(colors.yellow('\n⚠ ️WARNING ⚠ ️! ERRORS IN PRS. MUST BE REVIEW\n'))
+            print(colors.yellow('##########################################\n'))
+            for prmsg in ERRORS:
+                print('ERR\t{}'.format(prmsg))
+            print(colors.yellow('############# END ERROR PRS ###############\n'))
         print(colors.yellow(
             '\nNot Included: "{}"\n'.format(' '.join(TO_APPLY))
         ))
@@ -990,246 +1076,21 @@ def auto_changelog(milestone, show_issues=True):
     for key in label_keys:
         print ('\n## {key}\n'.format(key=key.upper()))
         for pull in pulls_desc[key]:
-            print(print_item(pull))
+            print(print_item(pull, milestone))
     if show_issues:
         print('\n# Issues:  \n')
         for issue in isses_desc:
-            print(print_item(issue))
+            print(print_item(issue, milestone))
     if other_desc:
         print('\n# Others :  \n')
         for pull in other_desc:
-            print(print_item(pull))
+            print(print_item(pull, milestone))
     return True
-
 
 @task
 def create_changelog(
         milestone, show_issues=False, changelog_path='/tmp',
         owner='gisce', repository='erp'):
-    import copy
-
-    SKIP_LABELS = ['custom', 'to be merged','deployed', 'traduccions']
-    GAS_LABEL = 'gas'
-    ELEC_LABEL = u'eléctrico'
-    OFICINA_VIRTUAL = 'oficinavirtual'
-    TYPE_LABELS = [ELEC_LABEL, GAS_LABEL, OFICINA_VIRTUAL]
-    TOP_FEATURE = u':fire: top feature'
-    COMMON_KEY = u'COMÚN'
-    def get_label(label_keys, labels, skip_custom=False):
-        if not skip_custom:
-            for label in labels:
-                name = label['name'].lower()
-                if name == 'custom':
-                    return 'custom'
-        for label in labels:
-            name = label['name'].lower()
-            for key in label_keys:
-                if key in name:
-                    return key
-        return 'others'
-
-    def print_item(item):
-        title_anchor = slugify(item['title'])
-        message = u'\n* {title} [:fa-plus-circle: detalles](detailed_{milestone}#{title_anchor}-{number}) - [:fa-github: {number}]({url})'.format(
-            title=item['title'], number=item['number'], url=item['url'],
-            milestone=milestone, title_anchor=title_anchor
-            )
-        return (message)
-
-    def print_item_detail(item, key=None):
-        body = item['body'] or ''
-        body = re.sub('^# ', '#### ', body).strip()
-        body = re.sub('\n# ', '\n#### ', body).strip()
-        body = re.sub('^## ', '#### ', body).strip()
-        body = re.sub('\n## ', '\n#### ', body).strip()
-        body = re.sub(
-            '#(\d+)',
-            '[:fa-github: \g<1>](https://github.com/{}/{}/pull/\g<1>)'.format(
-                owner, repository
-            ), body)
-        body = re.sub(
-            '- #(\d+)',
-            '- [:fa-github:  \g<1>](https://github.com/{}/{}/pull/\g<1>)'
-            ''.format(
-                owner, repository
-            ), body)
-        label = ''
-        if key:
-            for l in item['labels']:
-                if l['name'] not in SKIP_LABELS:
-                    label += u' <span class="label" ' \
-                             u'style="background-color: #{color};">{name}</span>'.format(
-                                    name=l['name'],
-                        color=l['color'])
-                label = '\n'+label
-        message = (
-            u'\n\n### {title} [:fa-github: {number}]({url})  {label}\n\n{body}\n ---'.format(
-                title=item['title'], number=item['number'],
-                url=item['url'], body=body, label=label
-            )
-        )
-        return message
-
-    logger.info('Getting PRs from GitHub')
-    headers = {
-        'Accept': 'application/vnd.github.cannonball-preview+json',
-        'Authorization': 'token %s' % github_config()['token']
-    }
-    url = ("https://api.github.com/search/issues"
-           "?q=is:pr+is:merged+milestone:{milestone}+repo:{owner}/{repository}"
-           "&type=pr"
-           "&sort=create"
-           "d&order=asc"
-           "&per_page=250").format(
-        milestone=milestone, owner=owner, repository=repository
-    )
-    r = requests.get(url, headers=headers)
-
-    pull = json.loads(r.text)
-    total_prs = pull['total_count']
-    pulls_items= []
-    total_fetch = 0
-    page = 1
-    while total_fetch < total_prs:
-        items = pull['items']
-        # pprint.pprint(items)
-        total_fetch += len(items)
-        pulls_items += items
-        if total_fetch >= total_prs:
-            break
-        page += 1
-        new_url = url + "&page={}".format(page)
-        r = requests.get(new_url, headers=headers)
-        pull = json.loads(r.text)
-        if page == 10:
-            break
-
-    isses_desc = []
-    top_pulls = []
-    pulls_desc = OrderedDict(
-        [
-            ('custom', []),
-            ('bug', []),
-            ('core', []),
-            ('atr', []),
-            ('telegestio', []),
-            ('gis', []),
-            ('facturacio', []),
-            ('medidas', []),
-            ('others', []),
-            ('traduccions', []),
-
-        ]
-    )
-    pulls_sep = {
-        GAS_LABEL: copy.deepcopy(pulls_desc),
-        ELEC_LABEL: copy.deepcopy(pulls_desc),
-        OFICINA_VIRTUAL: copy.deepcopy(pulls_desc),
-        'others': copy.deepcopy(pulls_desc)
-    }
-    label_keys = pulls_desc.keys()
-    other_desc = []
-    changelog_file = 'changelog_{}.md'.format(milestone)
-    top_file = 'top_{}.md'.format(milestone)
-    detailed_file = 'detailed_{}.md'.format(milestone)
-    print('Total PRs: {}'.format(total_prs))
-    number = 0
-    for item in tqdm(pulls_items):
-        url_item = item['html_url']
-        item_info = {
-            'title': item['title'],
-            'number': item['number'],
-            'url': url_item,
-            'body': item['body'],
-            'labels': item['labels'],
-        }
-        if 'issues' in url_item:
-            isses_desc.append(item_info)
-        elif 'pull' in url_item:
-            p_url = "https://api.github.com/repos/{owner}/{repository}/pulls/{number}".format(
-                owner=owner, repository=repository, number=item_info['number']
-            )
-            try:
-                r = requests.get(p_url, headers=headers)
-                pull_desc = json.loads(r.text)
-                item_info['pull_info'] = pull_desc
-                branch = pull_desc['base']['ref']
-            except ConnectionError as e:
-                tqdm.write('Failed to get infor for  {}'.format(item_info['number']))
-                branch = 'developer'
-            
-            if branch != 'developer':
-                continue
-            type_key = get_label(TYPE_LABELS, item['labels'], skip_custom=True)
-            top = get_label([TOP_FEATURE], item['labels'], skip_custom=True)
-            if TOP_FEATURE.lower() in top:
-                top_pulls.append(item_info)
-            key = get_label(label_keys, item['labels'])
-            pulls_sep[type_key][key].append(item_info)
-        else:
-            other_desc.append(item_info)
-        number += 1
-    logger.info('Total imported: {}'.format(number))
-    pulls_sep[GAS_LABEL].pop('custom')
-    pulls_sep[ELEC_LABEL].pop('custom')
-    pulls_sep[ELEC_LABEL].pop('traduccions')
-    pulls_sep[GAS_LABEL].pop('traduccions')
-    for key in ['gis', 'telegestio', 'medidas', 'facturacio']:
-        pulls_sep[ELEC_LABEL][key] += pulls_sep['others'][key]
-        pulls_sep['others'][key] = []
-    pulls_sep['others'].pop('custom')
-    pulls_sep['others'].pop('traduccions')
-    pulls_sep[COMMON_KEY] = pulls_sep.pop('others')
-    index_bug = label_keys.index('bug')
-    label_keys.pop(index_bug)
-    label_keys.append('bug')
-
-    # TOP FEATURES
-    logger.info('Writting top feature on {}/:'.format(changelog_path))
-    with open('{}/{}'.format(changelog_path, top_file), 'w') as f:
-        f.write("# TOP FEATURES version {milestone}\n".format(milestone=milestone))
-        for pull in top_pulls:
-            f.write(print_item(pull))
-
-
-    # CHANGELOGS
-    logger.info('Writting changelog on {}/:'.format(changelog_path))
-    with open('{}/{}'.format(changelog_path, changelog_file), 'w') as f:
-        f.write("# Changelog version {milestone}\n".format(milestone=milestone))
-        for type_l in TYPE_LABELS + [COMMON_KEY]:
-            f.write('\n## {key}\n'.format(key=type_l.upper()))
-            for key in label_keys:
-                pulls = pulls_sep[type_l].get(key,[])
-                if pulls:
-                    f.write('\n### {key}\n'.format(key=key.upper()))
-                    for pull in pulls:
-                        f.write(print_item(pull))
-        if show_issues:
-            f.write('\n# Issues:  \n')
-            for issue in isses_desc:
-                f.write(print_item(issue))
-        if other_desc:
-            f.write('\n# Others :  \n')
-            for pull in other_desc:
-                f.write(print_item(pull))
-    logger.info('    {}/{}'.format(changelog_path, changelog_file))
-    with open('{}/{}'.format(changelog_path, detailed_file) , 'w') as f:
-        f.write("# Detalles version {milestone}\n".format(milestone=milestone))
-        for type_l in TYPE_LABELS + [COMMON_KEY]:
-            f.write('\n## {key}\n'.format(key=type_l.upper()))
-            for key in label_keys:
-                pulls = pulls_sep[type_l].get(key,[])
-                if pulls:
-                    f.write('\n### {key}\n'.format(key=key.upper()))
-                    for pull in pulls:
-                        f.write(print_item_detail(pull, key))
-        if show_issues:
-            logger.info('\n# Issues:  \n')
-            for issue in isses_desc:
-                f.write(print_item_detail(issue, key))
-        if other_desc:
-            print('\n# Others :  \n')
-            for pull in other_desc:
-                f.write(print_item_detail(pull, key))
-    logger.info('    {}/{}'.format(changelog_path, detailed_file))
-    return True
+    make_changelog(milestone, show_issues=show_issues,
+                   changelog_path=changelog_path,
+                   owner=owner, repository=repository)

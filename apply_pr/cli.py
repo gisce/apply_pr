@@ -1,7 +1,11 @@
 import logging
 import os
 import sys
-from urlparse import urlparse
+import six
+if six.PY2:
+    from urlparse import urlparse
+else:
+    from urllib.parse import urlparse
 
 from fabric.tasks import execute, WrappedCallableTask
 from fabric.api import env
@@ -16,19 +20,26 @@ github_options = [
 
 ]
 
-deployment_options = [
-    click.option("--host", help="Host to apply", required=True),
-    click.option('--src', help='Remote src path',  default='/home/erp/src', show_default=True),
+deployment_path_options = [
+    click.option('--proxy', help='SSH proxy/jump host'),
+    click.option('--src', help='Parent path containing the repository',  default='/home/erp/src', show_default=True),
     click.option('--sudo_user', help='Sudo user from the host', default='erp', show_default=True),
 ]
 
-apply_pr_options = github_options + deployment_options + [
+deployment_options = [
+    click.option("--host", help="Remote host to apply", required=True),
+] + deployment_path_options
+
+apply_pr_options = github_options + [
+    click.option("--host", help="Remote host to apply"),
+    click.option("--local", "local_mode", help="Apply directly to a local checkout without SSH", is_flag=True, default=False),
+] + deployment_path_options + [
     click.option("--pr", help="Pull request to apply", default='',required=True),
     click.option("--environ", help="Environment to deploy", type=click.Choice(['pro', 'pre', 'test']), required=True),
     click.option("--from-number", help="From commit number", default=0),
     click.option("--from-commit", help="From commit hash (included)", default=None),
-    click.option("--force-hostname", help="Force hostname",  default=False),
-    click.option("--force-name", help="Force host repository name",  default=False),
+    click.option("--force-hostname", help="Force hostname",  type=click.STRING, default=None),
+    click.option("--force-name", help="Force host repository name", type=click.STRING, default=None),
     click.option("--auto-exit", help="Execute git am --abort when fail",
                  type=click.BOOL, default=True),
     click.option("--re-deploy", help="Try to get from-commit from the last success deployment",
@@ -89,6 +100,25 @@ def configure_logging():
     logging.basicConfig(level=log_level)
 
 
+def configure_ssh_auth(proxy=None):
+    env.use_ssh_config = True
+    if proxy:
+        env.gateway = proxy
+    ssh_key_path = os.environ.get('APPLY_PR_SSH_KEY_PATH')
+    if ssh_key_path:
+        env.key_filename = ssh_key_path
+
+
+def validate_deployment_target(local_mode=False, host=None, proxy=None):
+    if local_mode:
+        if host:
+            raise click.UsageError("--host cannot be used together with --local")
+        if proxy:
+            raise click.UsageError("--proxy cannot be used together with --local")
+    elif not host:
+        raise click.UsageError("--host is required unless --local is used")
+
+
 @click.command('apply_pr')
 @add_options(apply_pr_options)
 def deprecated(**kwargs):
@@ -107,17 +137,22 @@ def sastre(**kwargs):
 
 
 def apply_pr(
-    pr, host, from_number=0, from_commit=None, force_hostname=False,
+    pr, host=None, from_number=0, from_commit=None, force_hostname=False,
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
-    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False, no_set_label=False
+    environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False,
+    no_set_label=False, proxy=None, local_mode=False
 ):
     """
-    Deploy a PR into a remote server via Fabric
+    Deploy a PR into a remote server via Fabric or a local checkout
     :param pr:                  Number of the PR to deploy
     :type pr:                   str
     :param host:                Host to connect
     :type host:                 str
+    :param proxy:               SSH proxy/jump host
+    :type proxy:                str
+    :param local_mode:          Apply directly to the local checkout without SSH
+    :type local_mode:           bool
     :param from_number:         Number of the commit to deploy from
     :type from_number:          str
     :param from_commit:         Hash of the commit to deploy from
@@ -141,12 +176,18 @@ def apply_pr(
         ))
         sys.exit(1)
 
+    validate_deployment_target(
+        local_mode=local_mode, host=host, proxy=proxy
+    )
+
     from apply_pr import fabfile
-    if 'ssh' not in host and host[:2] != '//':
-        host = '//{}'.format(host)
-    url = urlparse(host, scheme='ssh')
-    env.user = url.username
-    env.password = url.password
+    if not local_mode:
+        if 'ssh' not in host and host[:2] != '//':
+            host = '//{}'.format(host)
+        url = urlparse(host, scheme='ssh')
+        env.user = url.username
+        env.password = url.password
+        configure_ssh_auth(proxy=proxy)
     if not prs and not pr:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't deploy nothing without indicate PR"
@@ -165,15 +206,29 @@ def apply_pr(
             )
         ))
         configure_logging()
-        apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
-        result = execute(
-            apply_pr_task, pr_dep, from_number, from_commit, hostname=force_hostname,
-            src=src, owner=owner, repository=repository, sudo_user=sudo_user,
-            host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
-            force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
-            environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
-            no_set_label=no_set_label
-        )
+        if local_mode:
+            from apply_pr.local import apply_pr as apply_pr_local
+            local_result = apply_pr_local(
+                fabfile, pr_dep, from_number=from_number,
+                from_commit=from_commit, hostname=force_hostname,
+                src=src, owner=owner, repository=repository,
+                auto_exit=auto_exit, force_name=force_name,
+                re_deploy=re_deploy, as_diff=as_diff,
+                environment=environ, reject=reject,
+                skip_rolling_check=skip_rolling_check,
+                no_set_label=no_set_label
+            )
+            result = {'local': local_result}
+        else:
+            apply_pr_task = WrappedCallableTask(fabfile.apply_pr)
+            result = execute(
+                apply_pr_task, pr_dep, from_number, from_commit, hostname=force_hostname,
+                src=src, owner=owner, repository=repository, sudo_user=sudo_user,
+                host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
+                force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
+                environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
+                no_set_label=no_set_label
+            )
         result_list = list(result.items())
         if not result_list[0][1]:
             failed_prs.append(pr_dep)
@@ -190,7 +245,7 @@ def apply_pr(
 @sastre.command(name="deploy")
 @add_options(apply_pr_options)
 def deploy(**kwargs):
-    """Deploy a PR into a remote server via Fabric"""
+    """Deploy a PR into a remote server or a local checkout"""
     if not isinstance(kwargs['pr'], (list, tuple)):
         from apply_pr.fabfile import get_info_from_url
         kwargs.update(get_info_from_url(kwargs['pr']))
@@ -202,7 +257,10 @@ def deploy(**kwargs):
 @click.option('--force/--no-force', default=False,
               help='Forces the usage of this command')
 @add_options(deployment_options)
-def check_pr(pr, force, src, owner, repository, host):
+def check_pr(
+    pr, force, src, host, owner='gisce', repository='erp', proxy=None,
+    sudo_user='erp'
+):
     """DEPRECATED - Check for applied commits on PR"""
     print(colors.red("This option has been deprecated as it doesn't work"))
     if not force:
@@ -214,6 +272,7 @@ def check_pr(pr, force, src, owner, repository, host):
     url = urlparse(host, scheme='ssh')
     env.user = url.username
     env.password = url.password
+    configure_ssh_auth(proxy=proxy)
 
     configure_logging()
 
