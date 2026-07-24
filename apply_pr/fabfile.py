@@ -180,6 +180,18 @@ class GitHubException(Exception):
 class PatchApplier(object):
 
     @staticmethod
+    def restore_stash():
+        with settings(warn_only=True):
+            pop_result = sudo("git stash pop")
+        unmerged_files = sudo("git ls-files -u")
+        if pop_result.failed or unmerged_files:
+            sudo("git reset --merge")
+            print(colors.red(
+                '\U000026D4 Error on stash pop. Keeping stash...'
+            ))
+            raise RuntimeError("Unable to restore stashed changes")
+
+    @staticmethod
     def apply(diff, stash=True, reject=False, message=None):
         need_stash = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om")
         stashed = False
@@ -237,12 +249,7 @@ class PatchApplier(object):
         finally:
             if stash and stashed:
                 print(colors.yellow('Unstashing...'))
-                sudo("git stash pop")
-                error_on_pop = sudo("test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -u")
-                if error_on_pop:
-                    sudo("git reset --merge")
-                    print(colors.red('\U000026D4 Error on stash pop. Keeping stash...'))
-                    raise
+                PatchApplier.restore_stash()
 
 
 class GitApplier(object):
