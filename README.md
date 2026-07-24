@@ -1,7 +1,7 @@
 ## Apply pull requests
 
-Fabric tools to apply pull requests in servers using `git format-patch` and
-`git am`.
+Tools to apply pull requests to remote servers or local checkouts using
+`git format-patch` and `git am`.
 Is integrated with the new [deployment
 API](https://developer.github.com/v3/repos/deployments/) from GitHub.
 
@@ -13,6 +13,13 @@ be provided explicitly, set `APPLY_PR_SSH_KEY_PATH` with the key file path
 before running the command. When the target host requires a jump server, pass
 `--proxy user@proxy-host`, equivalent to using `ssh -J user@proxy-host`.
 
+Local deployments use `--local` and execute Git directly in the target checkout;
+they do not open an SSH connection and do not use `sudo`. `--src` keeps the same
+meaning in both modes: it is the parent directory containing the repository.
+For example, `--src /home/user/src --repository erp` targets
+`/home/user/src/erp`. The local checkout must be clean before deployment so
+existing work cannot accidentally be included in the applied PR.
+
 ## Command line scripts
 
 This repository uses the [Click](http://click.pocoo.org/5/) package to
@@ -22,7 +29,7 @@ The following commands are supported with `sastre`:
 
 | Console Command    | Description                                                         | Wiki page                                                                                          |
 |:---------------:   |:--------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------|
-| `deploy`           | Apply a PR to a remote server                                       | [Deploy a pull request](https://github.com/gisce/apply_pr/wiki/Apply-a-Pull-Request)               |
+| `deploy`           | Apply a PR to a remote server or local checkout                     | [Deploy a pull request](https://github.com/gisce/apply_pr/wiki/Apply-a-Pull-Request)               |
 | `check_prs`        | Check the status of the PRs for a set of PRs                        | [Check pull requests status](https://github.com/gisce/apply_pr/wiki/Check-pull-requests-status)    |
 | `status`           | Update the status of a deploy into GitHub                           | [Mark deploy status](https://github.com/gisce/apply_pr/wiki/Mark-deploy-status)                    |
 | `create_changelog` | Create a chnagelog for the given milestone                          | [Create Changelog](https://github.com/gisce/apply_pr/wiki/Create-Changelog)                        |
@@ -46,8 +53,10 @@ Usage: deploy [OPTIONS]
 
 Options:
   --pr TEXT              Pull request to deploy  [required]
-  --host TEXT            Host to where to be deployed  [required]
+  --host TEXT            Remote host (required unless --local is used)
+  --local                Apply directly to a local checkout without SSH
   --proxy TEXT           SSH proxy/jump host
+  --src TEXT             Parent path containing the repository
   --from-number INTEGER  From commit number
   --from-commit TEXT     From commit hash (included)
   --force-hostname TEXT  Force hostname  [default: False]
@@ -55,6 +64,13 @@ Options:
   --repository TEXT      GitHub repository name  [default: erp]
   --src TEXT             Remote src path  [default: /home/erp/src]
   --help                 Show this message and exit.
+```
+
+Local example:
+
+```bash
+sastre deploy --local --src /home/user/src --repository erp \
+  --pr 1234 --environ test
 ```
 
 ### STATUS
