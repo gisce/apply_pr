@@ -69,9 +69,13 @@ Options:
 Local example:
 
 ```bash
-sastre deploy --local --src /home/user/src --repository erp \
+sastre deploy --local --src /home/user/src --repository gisce/erp \
   --pr 1234 --environ test
 ```
+
+`--repository` accepts either a repository name or the `owner/repository`
+format. The latter sets both values and takes precedence over `--owner`.
+`--owner` remains available for backwards compatibility.
 
 ### STATUS
 

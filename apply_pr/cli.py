@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from functools import wraps
 import six
 if six.PY2:
     from urlparse import urlparse
@@ -87,9 +88,24 @@ mark_deployed_options = github_options + [
 
 def add_options(options):
     def _add_options(func):
+        @wraps(func)
+        def _normalize_github_repository(*args, **kwargs):
+            repository = kwargs.get('repository')
+            if repository and '/' in repository:
+                parts = repository.split('/')
+                if len(parts) != 2 or not all(parts):
+                    raise click.BadParameter(
+                        "must be a repository name or use the 'owner/repository' format",
+                        param_hint='--repository',
+                    )
+                kwargs['owner'], kwargs['repository'] = parts
+            return func(*args, **kwargs)
+
         for option in reversed(options):
-            func = option(func)
-        return func
+            _normalize_github_repository = option(
+                _normalize_github_repository
+            )
+        return _normalize_github_repository
     return _add_options
 
 

@@ -6,6 +6,9 @@ import sys
 import types
 import unittest
 
+import click
+from click.testing import CliRunner
+
 
 class DummyEnv(object):
     pass
@@ -36,6 +39,55 @@ sys.modules.setdefault('fabric.colors', fake_fabric_colors)
 import apply_pr.cli as cli
 import apply_pr.local as local_backend
 import apply_pr as apply_pr_package
+
+
+@click.command()
+@cli.add_options(cli.github_options)
+def repository_options(owner, repository):
+    click.echo('{}/{}'.format(owner, repository))
+
+
+class RepositoryOptionsTest(unittest.TestCase):
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def test_repository_accepts_owner_and_repository(self):
+        result = self.runner.invoke(
+            repository_options,
+            ['--repository', 'gisce/apply_pr'],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.output.strip(), 'gisce/apply_pr')
+
+    def test_qualified_repository_overrides_owner_for_any_argument_order(self):
+        invocations = [
+            ['--owner', 'wrong', '--repository', 'gisce/apply_pr'],
+            ['--repository', 'gisce/apply_pr', '--owner', 'wrong'],
+        ]
+
+        for arguments in invocations:
+            result = self.runner.invoke(repository_options, arguments)
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.output.strip(), 'gisce/apply_pr')
+
+    def test_separate_owner_and_repository_remain_supported(self):
+        result = self.runner.invoke(
+            repository_options,
+            ['--owner', 'gisce', '--repository', 'erp'],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.output.strip(), 'gisce/erp')
+
+    def test_rejects_invalid_qualified_repository(self):
+        result = self.runner.invoke(
+            repository_options,
+            ['--repository', 'gisce/apply_pr/extra'],
+        )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("owner/repository", result.output)
 
 
 class ConfigureSSHAuthTest(unittest.TestCase):
