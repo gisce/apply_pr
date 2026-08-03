@@ -112,6 +112,63 @@ class LocalDeploymentTest(unittest.TestCase):
             ['pending', 'success'],
         )
 
+    def test_squashes_successfully_applied_commits(self):
+        self._git('am', self.patch_path)
+        self._write('second.txt', 'second change\n')
+        self._git('add', 'second.txt')
+        self._git('commit', '-q', '-m', 'Second change')
+        second_patch = os.path.join(
+            self.tempdir, '0002-second-change.patch'
+        )
+        with open(second_patch, 'wb') as stream:
+            stream.write(subprocess.check_output(
+                ['git', 'format-patch', '-1', '--stdout'],
+                cwd=self.checkout,
+                stderr=subprocess.STDOUT,
+            ))
+        self._git('reset', '-q', '--hard', 'HEAD~2')
+
+        class TwoPatchBackend(FakeBackend):
+            def export_patches_from_github(
+                backend_self, pr_number, from_commit=None,
+                owner='gisce', repository='erp'
+            ):
+                destination = os.path.join(
+                    'deploy', 'patches', str(pr_number)
+                )
+                os.makedirs(destination)
+                for patch in (self.patch_path, second_patch):
+                    shutil.copy(
+                        patch,
+                        os.path.join(destination, os.path.basename(patch)),
+                    )
+
+        backend = TwoPatchBackend(self.patch_path)
+        before = self._git('rev-parse', 'HEAD').strip()
+
+        result = local.apply_pr(
+            backend,
+            '42',
+            src=self.src,
+            repository='erp',
+            auto_exit=True,
+            squash=True,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(
+            self._git('rev-list', '--count', '{}..HEAD'.format(before)).strip(),
+            '1',
+        )
+        self.assertEqual(
+            self._git('log', '-1', '--format=%s').strip(),
+            'Apply pull request #42',
+        )
+        with open(os.path.join(self.checkout, 'message.txt')) as stream:
+            self.assertEqual(stream.read(), 'after\n')
+        with open(os.path.join(self.checkout, 'second.txt')) as stream:
+            self.assertEqual(stream.read(), 'second change\n')
+
     def test_rejects_dirty_checkout_before_registering_deployment(self):
         backend = FakeBackend(self.patch_path)
         self._write('message.txt', 'dirty\n')

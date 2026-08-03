@@ -59,6 +59,7 @@ Options:
   --src TEXT             Parent path containing the repository
   --from-number INTEGER  From commit number
   --from-commit TEXT     From commit hash (included)
+  --squash               Squash successfully applied commits into one
   --force-hostname TEXT  Force hostname  [default: False]
   --owner TEXT           GitHub owner name  [default: gisce]
   --repository TEXT      GitHub repository name  [default: erp]
