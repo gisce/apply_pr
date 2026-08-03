@@ -145,7 +145,7 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
 @task
 def apply_remote_patches(
     name, from_patch=0, src='/home/erp/src', repository='erp', sudo_user='erp',
-    auto_exit=True
+    auto_exit=True, squash=False
 ):
     from_commit = None
     if isinstance(from_patch, string_types) and len(from_patch) == 40:
@@ -178,10 +178,20 @@ def apply_remote_patches(
 
         if patches_to_apply:
             with cd("{}/{}".format(src, repository)):
+                previous_head = None
+                if squash:
+                    previous_head = sudo("git rev-parse HEAD").strip()
                 git_am = GitApplier(patches_to_apply)
                 if auto_exit:
                     git_am.auto_exit = True
                 git_am.run()
+                if squash:
+                    sudo(
+                        "git reset --soft {head} && "
+                        "git commit -m 'Apply pull request #{name}'".format(
+                            head=previous_head, name=name
+                        )
+                    )
 
 
 class WiggleException(Exception):
@@ -723,7 +733,8 @@ def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
-        as_diff=False, environment='pro', reject=False, skip_rolling_check=False, no_set_label=False
+        as_diff=False, environment='pro', reject=False,
+        skip_rolling_check=False, no_set_label=False, squash=False
 ):
     if force_name:
         repository_name = force_name
@@ -810,6 +821,7 @@ def apply_pr(
                 repository=repository_name,
                 sudo_user=sudo_user,
                 auto_exit=auto_exit,
+                squash=squash,
             )
         mark_deploy_status(deploy_id,
                            state='success',

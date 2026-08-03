@@ -197,9 +197,17 @@ def _select_patches(workdir, pr_number, from_number=0):
     return patches
 
 
-def _apply_patches(checkout, patches, auto_exit=True, input_func=None):
+def _apply_patches(
+    checkout, patches, auto_exit=True, input_func=None, squash=False,
+    pr_number=None
+):
     input_func = input_func or console_input
     progress = tqdm(total=len(patches), desc='   Applying')
+    previous_head = None
+    if squash:
+        previous_head = _run_git(
+            checkout, ['rev-parse', 'HEAD']
+        ).output.strip()
     try:
         result = _run_git(checkout, ['am'] + patches, check=False)
         while True:
@@ -208,6 +216,15 @@ def _apply_patches(checkout, patches, auto_exit=True, input_func=None):
                     _tqdm_write(colors.green(line))
                     progress.update()
             if not result.failed:
+                if squash:
+                    _run_git(checkout, ['reset', '--soft', previous_head])
+                    _run_git(
+                        checkout,
+                        [
+                            'commit', '-m',
+                            'Apply pull request #{}'.format(pr_number),
+                        ],
+                    )
                 return
             if 'git config --global user.email' in result.output:
                 _log_error('Need to configure git for this user')
@@ -286,7 +303,7 @@ def apply_pr(
     src='/home/erp/src', owner='gisce', repository='erp', auto_exit=False,
     force_name=None, re_deploy=False, as_diff=False, environment='pro',
     reject=False, skip_rolling_check=False, no_set_label=False,
-    input_func=None
+    input_func=None, squash=False
 ):
     """Apply a GitHub pull request directly to a local checkout."""
     repository_name = force_name or repository
@@ -393,6 +410,8 @@ def apply_pr(
                 patches,
                 auto_exit=auto_exit,
                 input_func=input_func,
+                squash=squash,
+                pr_number=pr_number,
             )
 
         backend.mark_deploy_status(

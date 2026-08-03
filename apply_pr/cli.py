@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from functools import wraps
 import six
 if six.PY2:
     from urlparse import urlparse
@@ -46,6 +47,8 @@ apply_pr_options = github_options + [
                 is_flag=True, default=False),
     click.option("--as-diff", help="Apply pull request as unique diff",
                  is_flag=True, default=False),
+    click.option("--squash", help="Squash successfully applied commits into one",
+                 is_flag=True, default=False),
     click.option("--prs", help="Pull request to apply", default=''),
     click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
     click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False),
@@ -87,9 +90,24 @@ mark_deployed_options = github_options + [
 
 def add_options(options):
     def _add_options(func):
+        @wraps(func)
+        def _normalize_github_repository(*args, **kwargs):
+            repository = kwargs.get('repository')
+            if repository and '/' in repository:
+                parts = repository.split('/')
+                if len(parts) != 2 or not all(parts):
+                    raise click.BadParameter(
+                        "must be a repository name or use the 'owner/repository' format",
+                        param_hint='--repository',
+                    )
+                kwargs['owner'], kwargs['repository'] = parts
+            return func(*args, **kwargs)
+
         for option in reversed(options):
-            func = option(func)
-        return func
+            _normalize_github_repository = option(
+                _normalize_github_repository
+            )
+        return _normalize_github_repository
     return _add_options
 
 
@@ -141,7 +159,7 @@ def apply_pr(
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
     environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False,
-    no_set_label=False, proxy=None, local_mode=False
+    no_set_label=False, proxy=None, local_mode=False, squash=False
 ):
     """
     Deploy a PR into a remote server via Fabric or a local checkout
@@ -214,6 +232,7 @@ def apply_pr(
                 src=src, owner=owner, repository=repository,
                 auto_exit=auto_exit, force_name=force_name,
                 re_deploy=re_deploy, as_diff=as_diff,
+                squash=squash,
                 environment=environ, reject=reject,
                 skip_rolling_check=skip_rolling_check,
                 no_set_label=no_set_label
@@ -226,6 +245,7 @@ def apply_pr(
                 src=src, owner=owner, repository=repository, sudo_user=sudo_user,
                 host='{}:{}'.format(url.hostname, (url.port or 22)), auto_exit=auto_exit,
                 force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
+                squash=squash,
                 environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
                 no_set_label=no_set_label
             )
