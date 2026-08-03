@@ -204,6 +204,18 @@ class GitHubException(Exception):
 class PatchApplier(object):
 
     @staticmethod
+    def restore_stash():
+        with settings(warn_only=True):
+            pop_result = sudo("git stash pop")
+        unmerged_files = sudo("git ls-files -u")
+        if pop_result.failed or unmerged_files:
+            sudo("git reset --merge")
+            print(colors.red(
+                '\U000026D4 Error on stash pop. Keeping stash...'
+            ))
+            raise RuntimeError("Unable to restore stashed changes")
+
+    @staticmethod
     def apply(diff, stash=True, reject=False, message=None, sudo_user='erp'):
         old_prefix = env.sudo_prefix
         env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
@@ -265,7 +277,7 @@ class PatchApplier(object):
         finally:
             if stash and stashed:
                 print(colors.yellow('Unstashing...'))
-                sudo("git stash pop")
+                PatchApplier.restore_stash()
             env.sudo_prefix = old_prefix
 
 
