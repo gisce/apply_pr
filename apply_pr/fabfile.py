@@ -15,7 +15,7 @@ import six
 from fabric.api import local, run, cd, put, settings, abort, sudo, hide, task, env, prefix
 from fabric.operations import open_shell, prompt
 from fabric.contrib import files
-from fabric.state import output
+from fabric.state import connections, output
 from fabric.exceptions import NetworkError
 from fabric import colors
 from osconf import config_from_environment
@@ -41,6 +41,7 @@ from giscemultitools.githubutils.utils import GithubUtils
 from requests.exceptions import ConnectionError
 from .github_utils import github_config, is_github_token_valid
 from .changelog import make_changelog
+from .remote_lock import RemoteRepositoryLock, RepositoryLocked
 
 logger = logging.getLogger(__name__)
 
@@ -750,10 +751,30 @@ def apply_pr(
         resp = input('Deploy from {}? (y/n): '.format(from_commit or '0'))
         if resp.upper() != 'Y':
             exit(-1)
-    deploy_id = mark_to_deploy(pr_number,
-                               hostname=hostname,
-                               owner=owner,
-                               repository=repository)
+    with settings(sudo_user=sudo_user):
+        with cd('{}/{}'.format(src, repository_name)):
+            common_directory = sudo(
+                'cd "$(git rev-parse --git-common-dir)" && pwd -P',
+                user=sudo_user,
+            ).strip()
+    repository_lock = RemoteRepositoryLock(
+        common_directory, connections[env.host_string], env.host_string,
+        pr_number=pr_number,
+    )
+    try:
+        repository_lock.acquire()
+    except RepositoryLocked as e:
+        logger.error(e)
+        tqdm.write(colors.red(str(e)))
+        return False
+    try:
+        deploy_id = mark_to_deploy(pr_number,
+                                   hostname=hostname,
+                                   owner=owner,
+                                   repository=repository)
+    except Exception:
+        repository_lock.release()
+        raise
     if not deploy_id:
         tqdm.write(colors.magenta(
             'No deploy id! you must mark the Pull Request manually'
@@ -832,6 +853,8 @@ def apply_pr(
                            )
         tqdm.write(colors.red("Deploy failure \U0001F680"))
         return False
+    finally:
+        repository_lock.release()
 
 
 @task
