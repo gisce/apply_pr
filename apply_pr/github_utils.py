@@ -11,6 +11,24 @@ import requests
 from osconf import config_from_environment
 
 
+def github_diff_url(pr_number, owner='gisce', repository='erp',
+                    from_commit=None, to_commit=None):
+    if bool(from_commit) != bool(to_commit):
+        raise ValueError(
+            'Both from_commit and to_commit are required for a partial diff'
+        )
+    if from_commit:
+        return 'https://github.com/{owner}/{repository}/compare/{from_commit}...{to_commit}.diff'.format(
+            owner=owner,
+            repository=repository,
+            from_commit=from_commit,
+            to_commit=to_commit,
+        )
+    return 'https://github.com/{owner}/{repository}/pull/{pr_number}.diff'.format(
+        owner=owner, repository=repository, pr_number=pr_number
+    )
+
+
 def is_github_token_valid(token):
     headers = {'Authorization': 'token {token}'.format(token=token)}
     url = "https://api.github.com/user"

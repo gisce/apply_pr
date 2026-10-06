@@ -39,7 +39,7 @@ from giscemultitools.githubutils.objects import GHAPIRequester
 from giscemultitools.githubutils.utils import GithubUtils
 
 from requests.exceptions import ConnectionError
-from .github_utils import github_config, is_github_token_valid
+from .github_utils import github_config, github_diff_url, is_github_token_valid
 from .changelog import make_changelog
 
 logger = logging.getLogger(__name__)
@@ -133,13 +133,26 @@ def upload_patches(
 
 @task
 def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
-                      sudo_user='erp', reject=False
+                      sudo_user='erp', reject=False, owner='gisce',
+                      from_commit=None, to_commit=None
 ):
     with settings(sudo_user=sudo_user):
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            PatchApplier.apply(diff_file, reject=reject, sudo_user=sudo_user)
+            message = github_diff_url(
+                pr_number,
+                owner=owner,
+                repository=repository,
+                from_commit=from_commit,
+                to_commit=to_commit,
+            )
+            PatchApplier.apply(
+                diff_file,
+                reject=reject,
+                message=message,
+                sudo_user=sudo_user,
+            )
 
 
 @task
@@ -793,7 +806,7 @@ def apply_pr(
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
-                reject=reject
+                reject=reject, owner=owner
             )
         else:
             if from_commit:
