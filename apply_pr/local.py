@@ -373,7 +373,8 @@ def apply_pr(
             if as_diff:
                 backend.export_diff_from_github(
                     pr_number, owner=owner, repository=repository,
-                    skip_directory_pattern=skip_directory_pattern
+                    from_commit=from_commit,
+                    skip_directory_pattern=skip_directory_pattern,
                 )
             else:
                 backend.export_patches_from_github(
