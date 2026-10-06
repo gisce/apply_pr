@@ -58,7 +58,8 @@ Options:
   --proxy TEXT           SSH proxy/jump host
   --src TEXT             Parent path containing the repository
   --from-number INTEGER  From commit number
-  --from-commit TEXT     From commit hash (included)
+  --from-commit TEXT     From commit hash or GitHub commit URL (excluded for
+                         --as-diff)
   --squash               Squash successfully applied commits into one
   --force-hostname TEXT  Force hostname  [default: False]
   --owner TEXT           GitHub owner name  [default: gisce]

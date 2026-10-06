@@ -9,6 +9,42 @@ import logging
 import qrcode
 import requests
 from osconf import config_from_environment
+from six.moves.urllib.parse import urlparse
+
+
+def normalize_github_commit(value, owner, repository):
+    """Return a commit SHA from either a SHA or a GitHub commit URL."""
+    if not value:
+        return value
+    if not value.startswith(('http://', 'https://')):
+        return value
+
+    parsed = urlparse(value)
+    parts = parsed.path.strip('/').split('/')
+    if (parsed.netloc != 'github.com' or len(parts) != 4 or
+            parts[0] != owner or parts[1] != repository or
+            parts[2] != 'commit' or not parts[3]):
+        raise ValueError(
+            'from-commit must be a commit URL for {}/{}'.format(
+                owner, repository
+            )
+        )
+    return parts[3]
+
+
+def github_compare_api_url(from_commit, to_commit, owner, repository):
+    return (
+        'https://api.github.com/repos/{owner}/{repository}/compare/'
+        '{from_commit}...{to_commit}'
+    ).format(
+        owner=owner, repository=repository,
+        from_commit=from_commit, to_commit=to_commit,
+    )
+
+
+def is_valid_commit_range(compare_response):
+    return (compare_response.status_code == 200 and
+            compare_response.json().get('status') in ('ahead', 'identical'))
 
 
 def github_diff_url(pr_number, owner='gisce', repository='erp',

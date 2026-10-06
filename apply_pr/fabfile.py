@@ -39,7 +39,10 @@ from giscemultitools.githubutils.objects import GHAPIRequester
 from giscemultitools.githubutils.utils import GithubUtils
 
 from requests.exceptions import ConnectionError
-from .github_utils import github_config, github_diff_url, is_github_token_valid
+from .github_utils import (
+    github_config, github_diff_url, is_github_token_valid,
+    github_compare_api_url, is_valid_commit_range, normalize_github_commit,
+)
 from .changelog import make_changelog
 
 logger = logging.getLogger(__name__)
@@ -479,7 +482,8 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+def export_diff_from_github(pr_number, owner='gisce', repository='erp',
+                            from_commit=None):
     try:
         local("mkdir -p %s" % 'deploy/patches')
     except BaseException as e:
@@ -494,9 +498,34 @@ def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
     url = 'https://api.github.com/repos/{owner}/{repository}/pulls/{pr_number}'.format(
         owner=owner, repository=repository, pr_number=pr_number
     )
+    if from_commit:
+        from_commit = normalize_github_commit(
+            from_commit, owner=owner, repository=repository
+        )
+        pull_response = requests.get(url, headers=headers)
+        if pull_response.status_code != 200:
+            abort('Unable to get info from the pull request')
+        to_commit = pull_response.json()['head']['sha']
+        compare_url = github_compare_api_url(
+            from_commit, to_commit, owner, repository
+        )
+        compare_response = requests.get(compare_url, headers={
+            'Authorization': headers['Authorization'],
+            'Accept': 'application/vnd.github+json',
+        })
+        if not is_valid_commit_range(compare_response):
+            abort(
+                'from-commit is not a valid base for pull request {}'.format(
+                    pr_number
+                )
+            )
+        url = compare_url
     r = requests.get(url, headers=headers)
+    if r.status_code != 200:
+        abort('Unable to export diff from GitHub')
     with open(diff_path, 'wb') as f:
         f.write(r.text.encode('utf-8'))
+    return from_commit, (to_commit if from_commit else None)
 
 
 @task
@@ -737,6 +766,12 @@ def apply_pr(
         as_diff=False, environment='pro', reject=False,
         skip_rolling_check=False, no_set_label=False, squash=False
 ):
+    diff_from_commit = None
+    diff_to_commit = None
+    if as_diff and from_commit:
+        diff_from_commit = normalize_github_commit(
+            from_commit, owner=owner, repository=repository
+        )
     if force_name:
         repository_name = force_name
     else:
@@ -784,8 +819,9 @@ def apply_pr(
         )))
         if not skip_upload:
             if as_diff:
-                export_diff_from_github(
-                    pr_number, owner=owner, repository=repository
+                diff_from_commit, diff_to_commit = export_diff_from_github(
+                    pr_number, owner=owner, repository=repository,
+                    from_commit=diff_from_commit,
                 )
                 upload_diff(
                     pr_number, src=src, repository=repository,
@@ -802,11 +838,16 @@ def apply_pr(
                                repository=repository_name,
                                sudo_user=sudo_user)
         if as_diff:
+            if diff_from_commit and not diff_to_commit:
+                diff_to_commit = find_from_to_commits(
+                    pr_number, owner=owner, repository=repository
+                )[1]
             tqdm.write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
-                reject=reject, owner=owner
+                reject=reject, owner=owner, from_commit=diff_from_commit,
+                to_commit=diff_to_commit,
             )
         else:
             if from_commit:
