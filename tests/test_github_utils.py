@@ -34,8 +34,9 @@ import apply_pr.github_utils as github_utils
 
 
 class DummyResponse(object):
-    def __init__(self, data):
+    def __init__(self, data, status_code=200):
         self._data = data
+        self.status_code = status_code
 
     def json(self):
         return self._data
@@ -86,6 +87,47 @@ class OAuthLoginEncodingTest(unittest.TestCase):
         text.encode('utf-8')
         self.assertNotIn('\ud83d', text)
         self.assertNotIn('\udc4b', text)
+
+
+class NormalizeGithubCommitTest(unittest.TestCase):
+    def test_accepts_commit_hash(self):
+        self.assertEqual(
+            github_utils.normalize_github_commit('abc123', 'gisce', 'erp'),
+            'abc123',
+        )
+
+    def test_accepts_commit_url_for_repository(self):
+        self.assertEqual(
+            github_utils.normalize_github_commit(
+                'https://github.com/gisce/erp/commit/abc123', 'gisce', 'erp'
+            ),
+            'abc123',
+        )
+
+    def test_rejects_commit_url_for_another_repository(self):
+        with self.assertRaises(ValueError):
+            github_utils.normalize_github_commit(
+                'https://github.com/other/erp/commit/abc123', 'gisce', 'erp'
+            )
+
+    def test_builds_compare_range_after_from_commit(self):
+        self.assertEqual(
+            github_utils.github_compare_api_url(
+                'base123', 'head456', 'gisce', 'apply_pr'
+            ),
+            'https://api.github.com/repos/gisce/apply_pr/compare/'
+            'base123...head456',
+        )
+
+    def test_accepts_ancestor_as_range_base(self):
+        self.assertTrue(github_utils.is_valid_commit_range(
+            DummyResponse({'status': 'ahead'})
+        ))
+
+    def test_rejects_commit_not_related_to_pull_request(self):
+        self.assertFalse(github_utils.is_valid_commit_range(
+            DummyResponse({'status': 'diverged'})
+        ))
 
 
 if __name__ == '__main__':
