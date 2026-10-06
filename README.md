@@ -68,6 +68,8 @@ Options:
   --from-commit TEXT     From commit hash or GitHub commit URL (excluded for
                          --as-diff)
   --squash               Squash successfully applied commits into one
+  --skip-directory-pattern TEXT
+                         Exclude diff/patch paths matching this regular expression
   --force-hostname TEXT  Force hostname  [default: False]
   --owner TEXT           GitHub owner name  [default: gisce]
   --repository TEXT      GitHub repository name  [default: erp]
@@ -85,6 +87,12 @@ sastre deploy --local --src /home/user/src --repository gisce/erp \
 `--repository` accepts either a repository name or the `owner/repository`
 format. The latter sets both values and takes precedence over `--owner`.
 `--owner` remains available for backwards compatibility.
+
+`--skip-directory-pattern` is a Python regular expression searched against the
+complete repository-relative old and new path of every changed file. A whole
+`diff --git` section is removed before its diff or patch is uploaded or applied.
+For example, `--skip-directory-pattern '(^|/)tests?(/|$)'` excludes directories
+named `test` or `tests` without also excluding names such as `latest`.
 
 ### STATUS
 
