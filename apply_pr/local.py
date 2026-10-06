@@ -303,7 +303,7 @@ def apply_pr(
     src='/home/erp/src', owner='gisce', repository='erp', auto_exit=False,
     force_name=None, re_deploy=False, as_diff=False, environment='pro',
     reject=False, skip_rolling_check=False, no_set_label=False,
-    input_func=None, squash=False
+    input_func=None, squash=False, skip_directory_pattern=None
 ):
     """Apply a GitHub pull request directly to a local checkout."""
     repository_name = force_name or repository
@@ -372,7 +372,8 @@ def apply_pr(
         with _working_directory(workdir):
             if as_diff:
                 backend.export_diff_from_github(
-                    pr_number, owner=owner, repository=repository
+                    pr_number, owner=owner, repository=repository,
+                    skip_directory_pattern=skip_directory_pattern
                 )
             else:
                 backend.export_patches_from_github(
@@ -380,6 +381,7 @@ def apply_pr(
                     from_commit,
                     owner=owner,
                     repository=repository,
+                    skip_directory_pattern=skip_directory_pattern,
                 )
 
         if as_diff:
@@ -391,28 +393,39 @@ def apply_pr(
                 raise LocalApplyError(
                     'The pull request diff was not downloaded'
                 )
-            _apply_diff(
-                checkout,
-                diff_path,
-                pr_number,
-                reject=reject,
-                input_func=input_func,
-            )
+            if os.path.getsize(diff_path):
+                _apply_diff(
+                    checkout,
+                    diff_path,
+                    pr_number,
+                    reject=reject,
+                    input_func=input_func,
+                )
+            else:
+                _tqdm_write(colors.green('Nothing to commit! Continue'))
         else:
             _tqdm_write(colors.yellow('Applying patches \U0001F648'))
-            patches = _select_patches(
-                workdir,
-                pr_number,
-                from_number=0 if from_commit else from_number,
-            )
-            _apply_patches(
-                checkout,
-                patches,
-                auto_exit=auto_exit,
-                input_func=input_func,
-                squash=squash,
-                pr_number=pr_number,
-            )
+            try:
+                patches = _select_patches(
+                    workdir,
+                    pr_number,
+                    from_number=0 if from_commit else from_number,
+                )
+            except LocalApplyError:
+                if not skip_directory_pattern:
+                    raise
+                patches = []
+            if patches:
+                _apply_patches(
+                    checkout,
+                    patches,
+                    auto_exit=auto_exit,
+                    input_func=input_func,
+                    squash=squash,
+                    pr_number=pr_number,
+                )
+            else:
+                _tqdm_write(colors.green('Nothing to commit! Continue'))
 
         backend.mark_deploy_status(
             deploy_id,

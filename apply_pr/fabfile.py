@@ -5,6 +5,7 @@ from __future__ import (
     with_statement, absolute_import, unicode_literals, print_function
 )
 import json
+import glob
 import logging
 import os
 import io
@@ -31,6 +32,8 @@ else:
     pass
 
 from collections import OrderedDict
+
+from apply_pr.patch_utils import filter_patch_paths
 
 
 
@@ -139,6 +142,11 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
+            with settings(warn_only=True):
+                has_content = sudo("test -s {} && echo yes".format(diff_file))
+            if has_content.strip() != 'yes':
+                logger.info('Filtered diff is empty; nothing to apply')
+                return
             PatchApplier.apply(diff_file, reject=reject, sudo_user=sudo_user)
 
 
@@ -410,7 +418,9 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def export_patches_from_git(from_commit, to_commit, pr_number):
+def export_patches_from_git(
+    from_commit, to_commit, pr_number, skip_directory_pattern=None
+):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
     deploy_path = "deploy/patches/{}".format(pr_number)
     try:
@@ -423,6 +433,16 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
+    if skip_directory_pattern:
+        for patch_path in glob.glob(os.path.join(deploy_path, '*.patch')):
+            with io.open(patch_path, 'r', encoding='utf-8') as patch_file:
+                content = patch_file.read()
+            filtered = filter_patch_paths(content, skip_directory_pattern)
+            if 'diff --git ' not in filtered:
+                os.unlink(patch_path)
+                continue
+            with io.open(patch_path, 'w', encoding='utf-8') as patch_file:
+                patch_file.write(filtered)
 
 
 @task
@@ -466,7 +486,9 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
+def export_diff_from_github(
+    pr_number, owner='gisce', repository='erp', skip_directory_pattern=None
+):
     try:
         local("mkdir -p %s" % 'deploy/patches')
     except BaseException as e:
@@ -482,13 +504,15 @@ def export_diff_from_github(pr_number, owner='gisce', repository='erp'):
         owner=owner, repository=repository, pr_number=pr_number
     )
     r = requests.get(url, headers=headers)
+    content = filter_patch_paths(r.text, skip_directory_pattern)
     with open(diff_path, 'wb') as f:
-        f.write(r.text.encode('utf-8'))
+        f.write(content.encode('utf-8'))
 
 
 @task
 def export_patches_from_github(
-    pr_number, from_commit=None, owner='gisce', repository='erp'
+    pr_number, from_commit=None, owner='gisce', repository='erp',
+    skip_directory_pattern=None
 ):
     patch_folder = "deploy/patches/%s" % pr_number
     try:
@@ -524,9 +548,13 @@ def export_patches_from_github(
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (patch_number, message)
+        content = filter_patch_paths(r.text, skip_directory_pattern)
+        if 'diff --git ' not in content:
+            logger.info('Skipping empty patch %s after path filtering.', filename)
+            continue
         with open(os.path.join(patch_folder, filename), 'wb') as patch:
             logger.info('Exporting patch %s.' % filename)
-            patch.write(r.text.encode('utf-8'))
+            patch.write(content.encode('utf-8'))
 
 
 @task
@@ -722,7 +750,8 @@ def apply_pr(
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
         as_diff=False, environment='pro', reject=False,
-        skip_rolling_check=False, no_set_label=False, squash=False
+        skip_rolling_check=False, no_set_label=False, squash=False,
+        skip_directory_pattern=None
 ):
     if force_name:
         repository_name = force_name
@@ -772,7 +801,8 @@ def apply_pr(
         if not skip_upload:
             if as_diff:
                 export_diff_from_github(
-                    pr_number, owner=owner, repository=repository
+                    pr_number, owner=owner, repository=repository,
+                    skip_directory_pattern=skip_directory_pattern
                 )
                 upload_diff(
                     pr_number, src=src, repository=repository,
@@ -782,7 +812,8 @@ def apply_pr(
                 export_patches_from_github(pr_number,
                                            from_commit,
                                            owner=owner,
-                                           repository=repository)
+                                           repository=repository,
+                                           skip_directory_pattern=skip_directory_pattern)
                 upload_patches(pr_number,
                                from_commit,
                                src=src,

@@ -172,6 +172,7 @@ class DeploymentTargetValidationTest(unittest.TestCase):
                 src='/srv/src',
                 repository='erp',
                 environ='test',
+                skip_directory_pattern='(^|/)tests?(/|$)',
             )
         finally:
             local_backend.apply_pr = old_local_apply
@@ -189,6 +190,17 @@ class DeploymentTargetValidationTest(unittest.TestCase):
         self.assertEqual(result, [{'local': True}])
         self.assertEqual(calls[0][0], fake_fabfile)
         self.assertEqual(calls[0][1], '42')
+        self.assertEqual(
+            calls[0][2]['skip_directory_pattern'],
+            '(^|/)tests?(/|$)',
+        )
+
+    def test_rejects_invalid_skip_directory_pattern(self):
+        with self.assertRaises(cli.click.BadParameter):
+            cli.apply_pr(
+                '42', local_mode=True, environ='test',
+                skip_directory_pattern='[',
+            )
 
 
 if __name__ == '__main__':
