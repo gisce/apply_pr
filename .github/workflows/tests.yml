@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-2:
+    name: Python 2.7
+    runs-on: ubuntu-24.04
+    container: python:2.7-buster
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install package
+        run: |
+          python -m pip install --upgrade 'pip<21' 'setuptools<45' 'wheel<0.38'
+          python -m pip install .
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+  python-3:
+    name: Python 3.11
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install package
+        run: python -m pip install .
+      - name: Run tests
+        run: python -m unittest discover -s tests

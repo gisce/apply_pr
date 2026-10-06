@@ -5,6 +5,13 @@ Tools to apply pull requests to remote servers or local checkouts using
 Is integrated with the new [deployment
 API](https://developer.github.com/v3/repos/deployments/) from GitHub.
 
+The supported Python runtimes are Python 2.7 and Python 3.11. Run the test
+suite locally from the repository root with:
+
+```bash
+python -m unittest discover -s tests
+```
+
 To use you must [generate an OAuth token](https://github.com/settings/tokens/new)
 from GitHub and set to the `GITHUB_TOKEN` environment variable.
 
