@@ -16,26 +16,6 @@ class DummyEnv(object):
 
 fake_env = DummyEnv()
 
-fake_fabric = types.ModuleType(str('fabric'))
-fake_fabric_tasks = types.ModuleType(str('fabric.tasks'))
-fake_fabric_api = types.ModuleType(str('fabric.api'))
-fake_fabric_colors = types.ModuleType(str('fabric.colors'))
-
-fake_fabric_tasks.execute = lambda *args, **kwargs: {}
-fake_fabric_tasks.WrappedCallableTask = lambda task: task
-fake_fabric_api.env = fake_env
-fake_fabric_colors.red = lambda text: text
-fake_fabric_colors.yellow = lambda text: text
-fake_fabric_colors.green = lambda text: text
-fake_fabric.tasks = fake_fabric_tasks
-fake_fabric.api = fake_fabric_api
-fake_fabric.colors = fake_fabric_colors
-
-sys.modules.setdefault('fabric', fake_fabric)
-sys.modules.setdefault('fabric.tasks', fake_fabric_tasks)
-sys.modules.setdefault('fabric.api', fake_fabric_api)
-sys.modules.setdefault('fabric.colors', fake_fabric_colors)
-
 import apply_pr.cli as cli
 import apply_pr.local as local_backend
 import apply_pr as apply_pr_package
@@ -94,10 +74,13 @@ class ConfigureSSHAuthTest(unittest.TestCase):
     def setUp(self):
         os.environ.pop('APPLY_PR_SSH_KEY_PATH', None)
         fake_env.__dict__.clear()
+        self.old_env = cli.env
+        cli.env = fake_env
 
     def tearDown(self):
         os.environ.pop('APPLY_PR_SSH_KEY_PATH', None)
         fake_env.__dict__.clear()
+        cli.env = self.old_env
 
     def test_enables_ssh_config_without_private_key(self):
         cli.configure_ssh_auth()

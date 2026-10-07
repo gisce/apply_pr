@@ -25,6 +25,7 @@ from os.path import isdir
 import requests
 from io import BytesIO
 from six import string_types, PY2
+from six.moves import shlex_quote
 from tqdm import tqdm
 if PY2:
     input = raw_input
@@ -34,6 +35,7 @@ else:
 from collections import OrderedDict
 
 from apply_pr.patch_utils import filter_patch_paths
+from apply_pr.exceptions import ApplyError
 
 
 
@@ -70,6 +72,21 @@ if config.get('no_sudo_mode'):
     USE_SUDO = False
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
+
+
+def _sudo_checked(command, sudo_user='erp', action='Remote command'):
+    with settings(warn_only=True):
+        result = sudo(command, user=sudo_user, combine_stderr=True)
+    if result.failed:
+        raise ApplyError(
+            '{action} failed (exit {code}).\nCommand: {command}\n{output}'.format(
+                action=action,
+                code=result.return_code,
+                command=command,
+                output=result.strip(),
+            )
+        )
+    return result
 
 
 def get_info_from_url(pr):
@@ -146,11 +163,17 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
-            with settings(warn_only=True):
-                has_content = sudo("test -s {} && echo yes".format(diff_file))
-            if has_content.strip() != 'yes':
-                logger.info('Filtered diff is empty; nothing to apply')
-                return
+            quoted_diff = shlex_quote(diff_file)
+            for flag, action in (
+                ('-f', 'Checking that the remote diff exists'),
+                ('-r', 'Checking that the remote diff is readable'),
+                ('-s', 'Checking that the remote diff is not empty'),
+            ):
+                _sudo_checked(
+                    'test {} {}'.format(flag, quoted_diff),
+                    sudo_user=sudo_user,
+                    action=action,
+                )
             message = github_diff_url(
                 pr_number,
                 owner=owner,
@@ -158,7 +181,7 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
                 from_commit=from_commit,
                 to_commit=to_commit,
             )
-            PatchApplier.apply(
+            return PatchApplier.apply(
                 diff_file,
                 reject=reject,
                 message=message,
@@ -231,66 +254,84 @@ class PatchApplier(object):
     def apply(diff, stash=True, reject=False, message=None, sudo_user='erp'):
         old_prefix = env.sudo_prefix
         env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
-        need_stash = sudo(
-            "test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om", user=sudo_user
-        )
         stashed = False
-        if stash and not need_stash:
-            stash = False
+        apply_error = None
         if message is None:
             message = 'Apply {}'.format(diff)
-        if stash:
-            print(colors.yellow('Stashing all before...'))
-            sudo("git stash -u")
-            stashed = True
         try:
-            if reject:
-                reject = '  --reject'
-            else:
-                reject = ''
+            need_stash = _sudo_checked(
+                'git status --porcelain', sudo_user=sudo_user
+            ).strip()
+            if stash and need_stash:
+                print(colors.yellow('Stashing all before...'))
+                _sudo_checked('git stash -u', sudo_user=sudo_user)
+                stashed = True
+            previous_head = _sudo_checked(
+                'git rev-parse HEAD', sudo_user=sudo_user
+            ).strip()
             print(colors.green('Applying diff {}'.format(diff)))
-            if reject:
-                try:
-                    sudo(
-                        "git apply {}{}".format(diff, reject),
-                     )
-                except:
-                    print(colors.yellow('Some rejects ...'))
-                rej = sudo(
-                    "git status | grep rej;echo yes", user=sudo_user
-                    )
-                if rej != 'yes':
-                    prompt(
-                        colors.red(
-                            "Manual resolve. "
-                            "If nothing to commit, empty staged"
-                            " and unstaged changes. Press Enter to continue.")
-                    )
-            else:
-                from apply_pr.exceptions import ApplyError
-                with settings(abort_exception=ApplyError):
-                    sudo(
-                        "git apply {}{}".format(diff, reject),
-                    )
-            empty_files = sudo(
-                'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
-            )
-            if empty_files != 'empty':
-                print(colors.green('Commit!'))
-                sudo(
-                    'git add -A && git commit -m "{}"'.format(message),
+            try:
+                _sudo_checked(
+                    'git apply {}{}'.format(
+                        '--reject ' if reject else '', shlex_quote(diff)
+                    ),
+                    sudo_user=sudo_user,
                 )
-            else:
-                print(colors.green('Nothing to commit! Continue'))
-
-        except Exception as e:
+            except ApplyError as error:
+                if not reject:
+                    raise
+                print(colors.yellow('Some rejects ...\n{}'.format(error)))
+                prompt(colors.red(
+                    'Manual resolve. Resolve the rejected hunks and remove '
+                    'the .rej files. Press Enter to continue.'
+                ))
+                rejected_files = _sudo_checked(
+                    "git ls-files --others --exclude-standard -- '*.rej'",
+                    sudo_user=sudo_user,
+                ).strip()
+                if rejected_files:
+                    raise ApplyError(
+                        'Unresolved rejected hunks:\n{}'.format(rejected_files)
+                    )
+            changed = _sudo_checked(
+                'git status --porcelain', sudo_user=sudo_user
+            ).strip()
+            if not changed:
+                raise ApplyError(
+                    'The diff {} produced no changes; no commit was created'.format(diff)
+                )
+            print(colors.green('Commit!'))
+            _sudo_checked('git add -A', sudo_user=sudo_user)
+            _sudo_checked(
+                'git commit -m {}'.format(shlex_quote(message)),
+                sudo_user=sudo_user,
+            )
+            current_head = _sudo_checked(
+                'git rev-parse HEAD', sudo_user=sudo_user
+            ).strip()
+            if current_head == previous_head:
+                raise ApplyError(
+                    'No commit was created after applying diff {}'.format(diff)
+                )
+            return current_head
+        except Exception as error:
+            apply_error = error
             print(colors.red('\U000026D4 Error applying diff'))
             raise
         finally:
-            if stash and stashed:
-                print(colors.yellow('Unstashing...'))
-                sudo("git stash pop")
-            env.sudo_prefix = old_prefix
+            try:
+                if stashed:
+                    print(colors.yellow('Unstashing...'))
+                    try:
+                        _sudo_checked('git stash pop', sudo_user=sudo_user)
+                    except Exception as stash_error:
+                        if apply_error is None:
+                            raise
+                        tqdm.write(colors.red(
+                            'Could not restore stashed changes: {}'.format(stash_error)
+                        ))
+            finally:
+                env.sudo_prefix = old_prefix
 
 
 class GitApplier(object):
@@ -721,8 +762,10 @@ def mark_deploy_status(
     )
     payload = {'state': state}
     if description is not None:
-        payload['description'] = description
+        # GitHub limits deployment status descriptions to 140 characters.
+        payload['description'] = description[:140]
     r = requests.post(url, data=json.dumps(payload), headers=headers)
+    r.raise_for_status()
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
     if state == 'success' and pr_number and environment is not None and not no_set_label:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
@@ -908,13 +951,16 @@ def apply_pr(
         return True
     except Exception as e:
         logger.error(e)
-        mark_deploy_status(deploy_id,
-                           state='error',
-                           description='{}'.format(e),
-                           owner=owner,
-                           repository=repository,
-                           no_set_label=no_set_label
-                           )
+        try:
+            mark_deploy_status(deploy_id,
+                               state='error',
+                               description='{}'.format(e),
+                               owner=owner,
+                               repository=repository,
+                               no_set_label=no_set_label
+                               )
+        except Exception as status_error:
+            logger.error('Could not mark deployment as failed: %s', status_error)
         tqdm.write(colors.red("Deploy failure \U0001F680"))
         return False
 
