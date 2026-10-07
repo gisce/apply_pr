@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: python:2.7-buster
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install package
         run: |
           python -m pip install --upgrade 'pip<21' 'setuptools<45' 'wheel<0.38'
@@ -27,8 +27,8 @@ jobs:
     name: Python 3.11
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
