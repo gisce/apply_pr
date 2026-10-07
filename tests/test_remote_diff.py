@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -16,6 +17,22 @@ from fabric.api import env
 from fabric.utils import abort
 
 from apply_pr import fabfile
+
+
+class LoggingCapture(object):
+    def __init__(self):
+        self.value = u''
+
+    def write(self, value):
+        if not isinstance(value, six.text_type):
+            value = value.decode('utf-8')
+        self.value += value
+
+    def flush(self):
+        pass
+
+    def getvalue(self):
+        return self.value
 
 
 class RemoteResult(six.text_type):
@@ -67,11 +84,11 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
             self.old_backend[name] = getattr(fabfile, name)
             setattr(fabfile, name, replacement)
         self.old_write = fabfile.tqdm.write
-        fabfile.tqdm.write = self.messages.append
+        fabfile.tqdm.write = self._capture_message
         self.old_environment = dict(
             (key, env[key]) for key in ('sudo_prefix', 'sudo_user', 'warn_only')
         )
-        self.error_stream = io.StringIO()
+        self.error_stream = LoggingCapture()
         self.error_handler = logging.StreamHandler(self.error_stream)
         fabfile.logger.addHandler(self.error_handler)
 
@@ -112,6 +129,11 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
 
     def _mark_status(self, deploy_id, state='success', **kwargs):
         self.statuses.append((state, kwargs))
+
+    def _capture_message(self, message):
+        if not isinstance(message, six.text_type):
+            message = message.decode('utf-8')
+        self.messages.append(message)
 
     def _deploy(self, **kwargs):
         return fabfile.apply_pr(
@@ -157,6 +179,17 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
 
         self._assert_failure('Permission denied')
         self.assertIn('test -r ' + self.diff_path, self.statuses[-1][1]['description'])
+
+    def test_unicode_application_error_is_preserved(self):
+        diagnostic = u"No s'ha pogut aplicar el pedaç"
+        self.overrides['git apply ' + self.diff_path] = RemoteResult(diagnostic, 1)
+
+        self.assertFalse(self._deploy())
+
+        self._assert_failure("No s'ha pogut aplicar")
+        self.assertIn(diagnostic, self.statuses[-1][1]['description'])
+        logged_diagnostic = 'peda\\xe7' if six.PY2 else u'pedaç'
+        self.assertIn(logged_diagnostic, self.error_stream.getvalue())
 
     def test_empty_diff_is_an_error(self):
         self._write(self.diff_path, '')
@@ -337,6 +370,24 @@ class GithubDeploymentStatusTest(unittest.TestCase):
             fabfile.mark_deploy_status(123, state='success', pr_number='42')
 
         self.assertEqual(len(self.calls), 1)
+
+
+class RemoteConsoleOutputTest(unittest.TestCase):
+    def test_error_and_progress_messages_are_written_as_utf8(self):
+        stream = io.BytesIO() if six.PY2 else io.StringIO()
+        old_stdout = sys.stdout
+        try:
+            sys.stdout = stream
+            fabfile._print_message(u'\u26d4 Error applying pedaç')
+            fabfile._tqdm_write(u'Deploy failure \U0001f680')
+        finally:
+            sys.stdout = old_stdout
+
+        output = stream.getvalue()
+        if not isinstance(output, six.text_type):
+            output = output.decode('utf-8')
+        self.assertIn(u'\u26d4 Error applying pedaç', output)
+        self.assertIn(u'Deploy failure \U0001f680', output)
 
 
 if __name__ == '__main__':

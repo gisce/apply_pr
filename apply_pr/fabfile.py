@@ -36,6 +36,9 @@ from collections import OrderedDict
 
 from apply_pr.patch_utils import filter_patch_paths
 from apply_pr.exceptions import ApplyError
+from apply_pr.console import (
+    as_text, console_message, log_error, print_message as _print_message,
+)
 
 
 
@@ -72,6 +75,10 @@ if config.get('no_sudo_mode'):
     USE_SUDO = False
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
+
+
+def _tqdm_write(message):
+    tqdm.write(console_message(message))
 
 
 def _sudo_checked(command, sudo_user='erp', action='Remote command'):
@@ -263,13 +270,13 @@ class PatchApplier(object):
                 'git status --porcelain', sudo_user=sudo_user
             ).strip()
             if stash and need_stash:
-                print(colors.yellow('Stashing all before...'))
+                _print_message(colors.yellow('Stashing all before...'))
                 _sudo_checked('git stash -u', sudo_user=sudo_user)
                 stashed = True
             previous_head = _sudo_checked(
                 'git rev-parse HEAD', sudo_user=sudo_user
             ).strip()
-            print(colors.green('Applying diff {}'.format(diff)))
+            _print_message(colors.green('Applying diff {}'.format(diff)))
             try:
                 _sudo_checked(
                     'git apply {}{}'.format(
@@ -280,7 +287,7 @@ class PatchApplier(object):
             except ApplyError as error:
                 if not reject:
                     raise
-                print(colors.yellow('Some rejects ...\n{}'.format(error)))
+                _print_message(colors.yellow('Some rejects ...\n{}'.format(as_text(error))))
                 prompt(colors.red(
                     'Manual resolve. Resolve the rejected hunks and remove '
                     'the .rej files. Press Enter to continue.'
@@ -300,7 +307,7 @@ class PatchApplier(object):
                 raise ApplyError(
                     'The diff {} produced no changes; no commit was created'.format(diff)
                 )
-            print(colors.green('Commit!'))
+            _print_message(colors.green('Commit!'))
             _sudo_checked('git add -A', sudo_user=sudo_user)
             _sudo_checked(
                 'git commit -m {}'.format(shlex_quote(message)),
@@ -316,19 +323,19 @@ class PatchApplier(object):
             return current_head
         except Exception as error:
             apply_error = error
-            print(colors.red('\U000026D4 Error applying diff'))
+            _print_message(colors.red('\U000026D4 Error applying diff'))
             raise
         finally:
             try:
                 if stashed:
-                    print(colors.yellow('Unstashing...'))
+                    _print_message(colors.yellow('Unstashing...'))
                     try:
                         _sudo_checked('git stash pop', sudo_user=sudo_user)
                     except Exception as stash_error:
                         if apply_error is None:
                             raise
-                        tqdm.write(colors.red(
-                            'Could not restore stashed changes: {}'.format(stash_error)
+                        _tqdm_write(colors.red(
+                            'Could not restore stashed changes: {}'.format(as_text(stash_error))
                         ))
             finally:
                 env.sudo_prefix = old_prefix
@@ -855,18 +862,18 @@ def apply_pr(
         check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
-        logger.error(e)
+        log_error(logger, e)
         raise
     if re_deploy:
-        tqdm.write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
+        _tqdm_write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
         last_deploy, from_commit = get_last_deploy(pr_number, hostname, owner, repository)
         if last_deploy:
-            tqdm.write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
+            _tqdm_write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
             if last_deploy['sha'] == from_commit:
-                tqdm.write(colors.red('\U000026D4 No commits to deploy...'))
+                _tqdm_write(colors.red('\U000026D4 No commits to deploy...'))
                 exit(-1)
         else:
-            tqdm.write(colors.blue('\U0001F62F Not found...'))
+            _tqdm_write(colors.blue('\U0001F62F Not found...'))
         resp = input('Deploy from {}? (y/n): '.format(from_commit or '0'))
         if resp.upper() != 'Y':
             exit(-1)
@@ -875,7 +882,7 @@ def apply_pr(
                                owner=owner,
                                repository=repository)
     if not deploy_id:
-        tqdm.write(colors.magenta(
+        _tqdm_write(colors.magenta(
             'No deploy id! you must mark the Pull Request manually'
         ))
     try:
@@ -886,7 +893,7 @@ def apply_pr(
                            environment=environment,
                            no_set_label=no_set_label
                            )
-        tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
+        _tqdm_write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
         if not skip_upload:
@@ -916,7 +923,7 @@ def apply_pr(
                 diff_to_commit = find_from_to_commits(
                     pr_number, owner=owner, repository=repository
                 )[1]
-            tqdm.write(colors.yellow("Applying diff \U0001F648"))
+            _tqdm_write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
@@ -928,7 +935,7 @@ def apply_pr(
                 from_ = from_commit
             else:
                 from_ = from_number
-            tqdm.write(colors.yellow("Applying patches \U0001F648"))
+            _tqdm_write(colors.yellow("Applying patches \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_patches(
                 pr_number,
@@ -947,21 +954,21 @@ def apply_pr(
                            no_set_label=no_set_label,
                            environment=environment
                            )
-        tqdm.write(colors.green("Deploy success \U0001F680"))
+        _tqdm_write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
-        logger.error(e)
+        log_error(logger, e)
         try:
             mark_deploy_status(deploy_id,
                                state='error',
-                               description='{}'.format(e),
+                               description=as_text(e),
                                owner=owner,
                                repository=repository,
                                no_set_label=no_set_label
                                )
         except Exception as status_error:
-            logger.error('Could not mark deployment as failed: %s', status_error)
-        tqdm.write(colors.red("Deploy failure \U0001F680"))
+            log_error(logger, status_error, prefix='Could not mark deployment as failed: ')
+        _tqdm_write(colors.red("Deploy failure \U0001F680"))
         return False
 
 
