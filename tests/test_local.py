@@ -31,7 +31,8 @@ class FakeBackend(object):
         self.statuses.append((deploy_id, state, kwargs))
 
     def export_patches_from_github(
-        self, pr_number, from_commit=None, owner='gisce', repository='erp'
+        self, pr_number, from_commit=None, owner='gisce', repository='erp',
+        skip_directory_pattern=None
     ):
         destination = os.path.join(
             'deploy', 'patches', str(pr_number)
@@ -131,7 +132,8 @@ class LocalDeploymentTest(unittest.TestCase):
         class TwoPatchBackend(FakeBackend):
             def export_patches_from_github(
                 backend_self, pr_number, from_commit=None,
-                owner='gisce', repository='erp'
+                owner='gisce', repository='erp',
+                skip_directory_pattern=None
             ):
                 destination = os.path.join(
                     'deploy', 'patches', str(pr_number)
