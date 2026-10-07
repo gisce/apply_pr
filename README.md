@@ -1,161 +1,191 @@
-## Apply pull requests
+# apply_pr (`sastre`)
 
-Tools to apply pull requests to remote servers or local checkouts using
-`git format-patch` and `git am`.
-Is integrated with the new [deployment
-API](https://developer.github.com/v3/repos/deployments/) from GitHub.
+`apply_pr` deploys GitHub pull requests to an existing Git checkout. Its
+`sastre` command can apply every commit as a patch with `git am`, or apply the
+pull request as a single diff. It also records GitHub deployment statuses and
+provides commands for inspecting deployments and creating changelogs.
 
-The supported Python runtimes are Python 2.7 and Python 3.11. Run the test
-suite locally from the repository root with:
+The tool is intended for controlled deployments to local or remote servers.
+It does not clone or provision the target repository: the checkout must
+already exist below `--src` and must be in the state expected by your
+deployment process.
 
-```bash
+## Requirements
+
+- Python 2.7 or Python 3.11
+- Git on the machine running `sastre` and on deployment targets
+- SSH access for remote deployments
+- A GitHub account with access to the repositories being deployed
+
+The supported Python versions are the versions exercised by CI. Python 2.7
+support is retained for legacy deployment environments.
+
+## Installation
+
+Install the published package from PyPI:
+
+```console
+pip install apply_pr
+sastre --help
+```
+
+For local development:
+
+```console
+git clone https://github.com/gisce/apply_pr.git
+cd apply_pr
+pip install -e .
+```
+
+## GitHub authentication
+
+Set a token in the environment for unattended use:
+
+```console
+export GITHUB_TOKEN=github_token_value
+```
+
+If `GITHUB_TOKEN` is absent, `sastre` starts GitHub's device authorization
+flow and displays a URL, a one-time code, and a QR code. The token needs access
+to the repository and to GitHub deployments. Keep it out of shell history,
+logs, and repository files.
+
+`--owner` defaults to `gisce` and `--repository` defaults to `erp`. A repository
+can also be written as `--repository owner/name`.
+
+## SSH configuration
+
+Remote deployments use the host, user, port, identity, and proxy settings from
+your OpenSSH configuration. A target can be passed as a hostname or as an SSH
+URL:
+
+```console
+sastre deploy --pr 123 --host deploy@example.net --environ pre
+sastre deploy --pr 123 --host ssh://deploy@example.net:2222 --environ pre
+```
+
+To select a key explicitly, set `APPLY_PR_SSH_KEY_PATH` to its filesystem path.
+Use `--proxy` for an SSH jump host. The default remote source root is
+`/home/erp/src`, so the target checkout for the default repository is
+`/home/erp/src/erp`.
+
+## Deploying a pull request
+
+### Commit-by-commit patches
+
+The default mode downloads the pull request commits and applies them with
+`git am`, preserving individual commits:
+
+```console
+sastre deploy \
+  --pr 123 \
+  --host deploy@example.net \
+  --environ pre \
+  --owner gisce \
+  --repository erp
+```
+
+`--pr` also accepts a GitHub pull request URL. Use `--from-number N` or
+`--from-commit SHA` to start at part of the pull request. `--squash` squashes
+successfully applied commits into one commit after applying them.
+
+### Single diff
+
+Use `--as-diff` to apply the pull request as one diff instead of a patch series:
+
+```console
+sastre deploy \
+  --pr https://github.com/gisce/erp/pull/123 \
+  --host deploy@example.net \
+  --environ pre \
+  --as-diff
+```
+
+With `--as-diff`, `--from-commit` is excluded from the generated comparison;
+it accepts either a commit SHA or a GitHub commit URL. `--reject` applies the
+diff with reject handling. `--re-deploy` and `--as-diff` cannot be combined.
+If a remote diff is missing, unreadable, empty, cannot be applied, or does not
+produce a commit, the deployment is reported as failed. Use
+`--exit-code-failure` when automation must also receive a non-zero exit code.
+
+### Local checkout
+
+Use `--local` to deploy directly to a local checkout, without SSH:
+
+```console
+sastre deploy --pr 123 --local --src /srv/src --environ test
+```
+
+`--local` cannot be combined with `--host` or `--proxy`.
+
+### Relevant deploy options
+
+Run `sastre deploy --help` for the authoritative full option list. Common
+options include:
+
+| Option | Behaviour |
+| --- | --- |
+| `--prs "123 124"` | Deploy multiple space-separated pull requests. |
+| `--force-name NAME` | Use a different checkout directory name on the target. |
+| `--force-hostname NAME` | Override the hostname recorded in GitHub. |
+| `--re-deploy` | Resume from the last successful deployment commit. |
+| `--skip-directory-pattern REGEX` | Exclude matching paths from patches or diffs. |
+| `--skip-rolling-check` | Bypass the target rolling-branch check. |
+| `--no-set-label` | Do not add the deployed environment label to the PR. |
+| `--exit-code-failure` | Exit with status 1 when one of multiple PRs fails. |
+| `--auto-exit BOOLEAN` | Control whether a failed `git am` is aborted automatically. |
+
+Options that bypass checks or exclude paths change deployment safety and
+should only be used after reviewing the generated change.
+`--skip-directory-pattern` is a Python regular expression matched against full
+repository-relative paths; the complete diff section for every matching file
+is removed.
+
+## Other commands
+
+```console
+# Update a GitHub deployment status
+sastre status DEPLOYMENT_ID success --repository owner/name
+
+# List deployment IDs and states for a pull request
+sastre get_deploys 123 --repository owner/name
+
+# Check the status of several pull requests
+sastre check_prs --prs "123 124" --repository owner/name
+
+# Mark a pull request as deployed without applying it
+sastre mark_deployed --pr 123 --environ pre --repository owner/name
+
+# Generate a milestone changelog under /tmp
+sastre create_changelog --milestone 3.5.0 --repository owner/name
+```
+
+`sastre check_pr` and the `apply_pr` console command are deprecated. Use
+`sastre deploy` for new automation.
+
+## Development and tests
+
+Install the project, then run the standard-library test suite:
+
+```console
+pip install -e .
 python -m unittest discover -s tests
 ```
 
-To use you must [generate an OAuth token](https://github.com/settings/tokens/new)
-from GitHub and set to the `GITHUB_TOKEN` environment variable.
+To validate the artifacts and the README rendering before a release:
 
-SSH connections use the standard `~/.ssh/config` file. If the private key must
-be provided explicitly, set `APPLY_PR_SSH_KEY_PATH` with the key file path
-before running the command. When the target host requires a jump server, pass
-`--proxy user@proxy-host`, equivalent to using `ssh -J user@proxy-host`.
-
-Local deployments use `--local` and execute Git directly in the target checkout;
-they do not open an SSH connection and do not use `sudo`. `--src` keeps the same
-meaning in both modes: it is the parent directory containing the repository.
-For example, `--src /home/user/src --repository erp` targets
-`/home/user/src/erp`. The local checkout must be clean before deployment so
-existing work cannot accidentally be included in the applied PR.
-
-## Command line scripts
-
-This repository uses the [Click](http://click.pocoo.org/5/) package to
-register commands that call the fabric scripts.
-
-The following commands are supported with `sastre`:
-
-| Console Command    | Description                                                         | Wiki page                                                                                          |
-|:---------------:   |:--------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------|
-| `deploy`           | Apply a PR to a remote server or local checkout                     | [Deploy a pull request](https://github.com/gisce/apply_pr/wiki/Apply-a-Pull-Request)               |
-| `check_prs`        | Check the status of the PRs for a set of PRs                        | [Check pull requests status](https://github.com/gisce/apply_pr/wiki/Check-pull-requests-status)    |
-| `status`           | Update the status of a deploy into GitHub                           | [Mark deploy status](https://github.com/gisce/apply_pr/wiki/Mark-deploy-status)                    |
-| `create_changelog` | Create a chnagelog for the given milestone                          | [Create Changelog](https://github.com/gisce/apply_pr/wiki/Create-Changelog)                        |
-| `check_pr`         | **Deprecated:** Check if the PR's commits are applied on the server | [Check Applied patches](https://github.com/gisce/apply_pr/wiki/Check-applied-patches-(deprecated)) |
-
-## Install
-
-```bash
-# Install from Pypi
-pip install apply_pr
+```console
+python setup.py sdist bdist_wheel
+twine check dist/*
 ```
 
-## Usage
+CI runs the test suite on Python 2.7 and Python 3.11. Contributions should
+preserve both runtimes unless the support policy is deliberately changed.
 
-**NOTE**: do not include braces on the following commands
+## Project links
 
-### DEPLOY
-
-```bash
-Usage: deploy [OPTIONS]
-
-Options:
-  --pr TEXT              Pull request to deploy  [required]
-  --host TEXT            Remote host (required unless --local is used)
-  --local                Apply directly to a local checkout without SSH
-  --proxy TEXT           SSH proxy/jump host
-  --src TEXT             Parent path containing the repository
-  --from-number INTEGER  From commit number
-  --from-commit TEXT     From commit hash or GitHub commit URL (excluded for
-                         --as-diff)
-  --squash               Squash successfully applied commits into one
-  --skip-directory-pattern TEXT
-                         Exclude diff/patch paths matching this regular expression
-  --force-hostname TEXT  Force hostname  [default: False]
-  --owner TEXT           GitHub owner name  [default: gisce]
-  --repository TEXT      GitHub repository name  [default: erp]
-  --src TEXT             Remote src path  [default: /home/erp/src]
-  --help                 Show this message and exit.
-```
-
-Local example:
-
-```bash
-sastre deploy --local --src /home/user/src --repository gisce/erp \
-  --pr 1234 --environ test
-```
-
-Remote `--as-diff` deployments require an existing, readable, nonempty diff and
-a successful Git commit that advances `HEAD`. A missing or empty diff (including
-one emptied by filtering), an application error, or a failed commit reports
-`Deploy failure` and marks the GitHub deployment as an error. Failed remote
-commands include the command, exit code, and server output in the error message.
-Use `--exit-code-failure` to also return exit code 1 to the calling shell.
-
-`--repository` accepts either a repository name or the `owner/repository`
-format. The latter sets both values and takes precedence over `--owner`.
-`--owner` remains available for backwards compatibility.
-
-`--skip-directory-pattern` is a Python regular expression searched against the
-complete repository-relative old and new path of every changed file. A whole
-`diff --git` section is removed before its diff or patch is uploaded or applied.
-For example, `--skip-directory-pattern '(^|/)tests?(/|$)'` excludes directories
-named `test` or `tests` without also excluding names such as `latest`.
-
-### STATUS
-
-```bash
-Usage: status [OPTIONS]
-
-Options:
-  --deploy-id TEXT                Deploy id to mark
-  --status [success|error|failure]
-                                  Status to set  [default: success]
-  --owner TEXT                    GitHub owner name  [default: gisce]
-  --repository TEXT               GitHub repository name  [default: erp]
-  --help                          Show this message and exit.
-```
-
-### CHECK PRS
-
-```bash
-Usage: check_prs [OPTIONS]
-
-Options:
-  --prs TEXT         List of pull request separated by space (by default)
-                     [required]
-  --separator TEXT   Character separator of list by default is space
-                     [default:  ; required]
-  --owner TEXT       GitHub owner name  [default: gisce]
-  --repository TEXT  GitHub repository name  [default: erp]
-  --help             Show this message and exit.
-```
-
-### CREATE CHANGELOG
-
-```bash
-Usage: create_changelog [OPTIONS]
-
-Options:
-  -m, --milestone TEXT    Milestone to get the issues from (version)
-                          [required]
-  --issues / --no-issues  Also get the data on the issues  [default: False]
-  --changelog_path TEXT   Path to drop the changelog file in  [default: /tmp]
-  --owner TEXT            GitHub owner name  [default: gisce]
-  --repository TEXT       GitHub repository name  [default: erp]
-  --help                  Show this message and exit.
-```
-
-### CHECK PR (deprecated)
-
-```bash
-Usage: check_pr [OPTIONS]
-
-Options:
-  --pr TEXT          Pull request to check  [required]
-  --host TEXT        Host to check  [required]
-  --proxy TEXT       SSH proxy/jump host
-  --owner TEXT       GitHub owner name  [default: gisce]
-  --repository TEXT  GitHub repository name  [default: erp]
-  --src TEXT         Remote src path  [default: /home/erp/src]
-  --help             Show this message and exit.
-```
+- [Source code](https://github.com/gisce/apply_pr)
+- [Issue tracker](https://github.com/gisce/apply_pr/issues)
+- [Releases and changelog](https://github.com/gisce/apply_pr/releases)
+- [PyPI package](https://pypi.org/project/apply-pr/)
+- [MIT license](https://github.com/gisce/apply_pr/blob/master/LICENSE)
