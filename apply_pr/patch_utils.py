@@ -41,3 +41,15 @@ def filter_patch_paths(content, skip_directory_pattern=None):
         if not any(pattern.search(path) for path in _diff_paths(header)):
             kept.append(section)
     return ''.join(kept)
+
+
+def append_pr_url(content, pr_url):
+    """Append the pull request URL to the commit message in a mail patch."""
+    diff_start = content.find('\ndiff --git ')
+    if diff_start == -1:
+        return content
+    separator = content.find('\n---\n')
+    if separator == -1 or separator > diff_start:
+        return content
+    message = content[:separator].rstrip('\n')
+    return '{}\n\n{}{}'.format(message, pr_url, content[separator:])

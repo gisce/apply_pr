@@ -34,7 +34,7 @@ else:
 
 from collections import OrderedDict
 
-from apply_pr.patch_utils import filter_patch_paths
+from apply_pr.patch_utils import append_pr_url, filter_patch_paths
 from apply_pr.exceptions import ApplyError
 from apply_pr.console import (
     as_text, console_message, log_error, print_message as _print_message,
@@ -483,7 +483,8 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 
 @task
 def export_patches_from_git(
-    from_commit, to_commit, pr_number, skip_directory_pattern=None
+    from_commit, to_commit, pr_number, owner='gisce', repository='erp',
+    skip_directory_pattern=None
 ):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
     deploy_path = "deploy/patches/{}".format(pr_number)
@@ -497,16 +498,21 @@ def export_patches_from_git(
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
-    if skip_directory_pattern:
-        for patch_path in glob.glob(os.path.join(deploy_path, '*.patch')):
-            with io.open(patch_path, 'r', encoding='utf-8') as patch_file:
-                content = patch_file.read()
+    pr_url = 'https://github.com/{}/{}/pull/{}'.format(
+        owner, repository, pr_number
+    )
+    for patch_path in glob.glob(os.path.join(deploy_path, '*.patch')):
+        with io.open(patch_path, 'r', encoding='utf-8') as patch_file:
+            content = patch_file.read()
+        if skip_directory_pattern:
             filtered = filter_patch_paths(content, skip_directory_pattern)
             if 'diff --git ' not in filtered:
                 os.unlink(patch_path)
                 continue
-            with io.open(patch_path, 'w', encoding='utf-8') as patch_file:
-                patch_file.write(filtered)
+            content = filtered
+        content = append_pr_url(content, pr_url)
+        with io.open(patch_path, 'w', encoding='utf-8') as patch_file:
+            patch_file.write(content)
 
 
 @task
@@ -642,6 +648,12 @@ def export_patches_from_github(
         if 'diff --git ' not in content:
             logger.info('Skipping empty patch %s after path filtering.', filename)
             continue
+        content = append_pr_url(
+            content,
+            'https://github.com/{}/{}/pull/{}'.format(
+                owner, repository, pr_number
+            ),
+        )
         with open(os.path.join(patch_folder, filename), 'wb') as patch:
             logger.info('Exporting patch %s.' % filename)
             patch.write(content.encode('utf-8'))
