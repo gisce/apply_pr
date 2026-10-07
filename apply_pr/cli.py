@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 from functools import wraps
 import six
@@ -57,7 +58,11 @@ apply_pr_options = github_options + [
     click.option("--reject", help="Use reject to deploy diff", is_flag=True, default=False),
     click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False),
     click.option("--exit-code-failure", help="If enabled, process will terminate with exit 1 if had some error", is_flag=True, default=False),
-    click.option("--no-set-label", help="Don't set deployed label on PR", is_flag=True, default=False)
+    click.option("--no-set-label", help="Don't set deployed label on PR", is_flag=True, default=False),
+    click.option(
+        "--skip-directory-pattern",
+        help="Exclude diff/patch paths matching this regular expression",
+    )
 ]
 
 status_options = github_options + [
@@ -163,7 +168,8 @@ def apply_pr(
     owner='gisce', repository='erp', src='/home/erp/src', sudo_user='erp',
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
     environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False,
-    no_set_label=False, proxy=None, local_mode=False, squash=False
+    no_set_label=False, proxy=None, local_mode=False, squash=False,
+    skip_directory_pattern=None
 ):
     """
     Deploy a PR into a remote server via Fabric or a local checkout
@@ -192,6 +198,14 @@ def apply_pr(
     :param skip_rolling_check:  Allow to skip rolling mode check
     :type sudo_user             bool
     """
+    if skip_directory_pattern:
+        try:
+            re.compile(skip_directory_pattern)
+        except re.error as error:
+            raise click.BadParameter(
+                str(error), param_hint='--skip-directory-pattern'
+            )
+
     if re_deploy and as_diff:
         click.echo(colors.red(
             u"\U000026D4 ERROR: You can't use re-deploy and as-diff at the same time"
@@ -239,7 +253,8 @@ def apply_pr(
                 squash=squash,
                 environment=environ, reject=reject,
                 skip_rolling_check=skip_rolling_check,
-                no_set_label=no_set_label
+                no_set_label=no_set_label,
+                skip_directory_pattern=skip_directory_pattern
             )
             result = {'local': local_result}
         else:
@@ -251,7 +266,8 @@ def apply_pr(
                 force_name=force_name, re_deploy=re_deploy, as_diff=as_diff,
                 squash=squash,
                 environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
-                no_set_label=no_set_label
+                no_set_label=no_set_label,
+                skip_directory_pattern=skip_directory_pattern
             )
         result_list = list(result.items())
         if not result_list[0][1]:

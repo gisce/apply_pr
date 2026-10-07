@@ -68,6 +68,8 @@ Options:
   --from-commit TEXT     From commit hash or GitHub commit URL (excluded for
                          --as-diff)
   --squash               Squash successfully applied commits into one
+  --skip-directory-pattern TEXT
+                         Exclude diff/patch paths matching this regular expression
   --force-hostname TEXT  Force hostname  [default: False]
   --owner TEXT           GitHub owner name  [default: gisce]
   --repository TEXT      GitHub repository name  [default: erp]
@@ -82,9 +84,22 @@ sastre deploy --local --src /home/user/src --repository gisce/erp \
   --pr 1234 --environ test
 ```
 
+Remote `--as-diff` deployments require an existing, readable, nonempty diff and
+a successful Git commit that advances `HEAD`. A missing or empty diff (including
+one emptied by filtering), an application error, or a failed commit reports
+`Deploy failure` and marks the GitHub deployment as an error. Failed remote
+commands include the command, exit code, and server output in the error message.
+Use `--exit-code-failure` to also return exit code 1 to the calling shell.
+
 `--repository` accepts either a repository name or the `owner/repository`
 format. The latter sets both values and takes precedence over `--owner`.
 `--owner` remains available for backwards compatibility.
+
+`--skip-directory-pattern` is a Python regular expression searched against the
+complete repository-relative old and new path of every changed file. A whole
+`diff --git` section is removed before its diff or patch is uploaded or applied.
+For example, `--skip-directory-pattern '(^|/)tests?(/|$)'` excludes directories
+named `test` or `tests` without also excluding names such as `latest`.
 
 ### STATUS
 

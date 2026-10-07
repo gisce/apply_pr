@@ -5,6 +5,7 @@ from __future__ import (
     with_statement, absolute_import, unicode_literals, print_function
 )
 import json
+import glob
 import logging
 import os
 import io
@@ -24,6 +25,7 @@ from os.path import isdir
 import requests
 from io import BytesIO
 from six import string_types, PY2
+from six.moves import shlex_quote
 from tqdm import tqdm
 if PY2:
     input = raw_input
@@ -31,6 +33,12 @@ else:
     pass
 
 from collections import OrderedDict
+
+from apply_pr.patch_utils import filter_patch_paths
+from apply_pr.exceptions import ApplyError
+from apply_pr.console import (
+    as_text, console_message, log_error, print_message as _print_message,
+)
 
 
 
@@ -67,6 +75,25 @@ if config.get('no_sudo_mode'):
     USE_SUDO = False
 
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
+
+
+def _tqdm_write(message):
+    tqdm.write(console_message(message))
+
+
+def _sudo_checked(command, sudo_user='erp', action='Remote command'):
+    with settings(warn_only=True):
+        result = sudo(command, user=sudo_user, combine_stderr=True)
+    if result.failed:
+        raise ApplyError(
+            '{action} failed (exit {code}).\nCommand: {command}\n{output}'.format(
+                action=action,
+                code=result.return_code,
+                command=command,
+                output=result.strip(),
+            )
+        )
+    return result
 
 
 def get_info_from_url(pr):
@@ -143,6 +170,17 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
         with cd("{}/{}".format(src, repository)):
             diff_file = 'patches/{pr_number}/{pr_number}.diff'.format(
                 pr_number=pr_number)
+            quoted_diff = shlex_quote(diff_file)
+            for flag, action in (
+                ('-f', 'Checking that the remote diff exists'),
+                ('-r', 'Checking that the remote diff is readable'),
+                ('-s', 'Checking that the remote diff is not empty'),
+            ):
+                _sudo_checked(
+                    'test {} {}'.format(flag, quoted_diff),
+                    sudo_user=sudo_user,
+                    action=action,
+                )
             message = github_diff_url(
                 pr_number,
                 owner=owner,
@@ -150,7 +188,7 @@ def apply_remote_diff(pr_number, src='/home/erp/src', repository='erp',
                 from_commit=from_commit,
                 to_commit=to_commit,
             )
-            PatchApplier.apply(
+            return PatchApplier.apply(
                 diff_file,
                 reject=reject,
                 message=message,
@@ -223,66 +261,84 @@ class PatchApplier(object):
     def apply(diff, stash=True, reject=False, message=None, sudo_user='erp'):
         old_prefix = env.sudo_prefix
         env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
-        need_stash = sudo(
-            "test -f .gitignore && git ls-files -om -X .gitignore || git ls-files -om", user=sudo_user
-        )
         stashed = False
-        if stash and not need_stash:
-            stash = False
+        apply_error = None
         if message is None:
             message = 'Apply {}'.format(diff)
-        if stash:
-            print(colors.yellow('Stashing all before...'))
-            sudo("git stash -u")
-            stashed = True
         try:
-            if reject:
-                reject = '  --reject'
-            else:
-                reject = ''
-            print(colors.green('Applying diff {}'.format(diff)))
-            if reject:
-                try:
-                    sudo(
-                        "git apply {}{}".format(diff, reject),
-                     )
-                except:
-                    print(colors.yellow('Some rejects ...'))
-                rej = sudo(
-                    "git status | grep rej;echo yes", user=sudo_user
-                    )
-                if rej != 'yes':
-                    prompt(
-                        colors.red(
-                            "Manual resolve. "
-                            "If nothing to commit, empty staged"
-                            " and unstaged changes. Press Enter to continue.")
-                    )
-            else:
-                from apply_pr.exceptions import ApplyError
-                with settings(abort_exception=ApplyError):
-                    sudo(
-                        "git apply {}{}".format(diff, reject),
-                    )
-            empty_files = sudo(
-                'git ls-files --modified;git ls-files -o --exclude-standard; echo empty'
-            )
-            if empty_files != 'empty':
-                print(colors.green('Commit!'))
-                sudo(
-                    'git add -A && git commit -m "{}"'.format(message),
+            need_stash = _sudo_checked(
+                'git status --porcelain', sudo_user=sudo_user
+            ).strip()
+            if stash and need_stash:
+                _print_message(colors.yellow('Stashing all before...'))
+                _sudo_checked('git stash -u', sudo_user=sudo_user)
+                stashed = True
+            previous_head = _sudo_checked(
+                'git rev-parse HEAD', sudo_user=sudo_user
+            ).strip()
+            _print_message(colors.green('Applying diff {}'.format(diff)))
+            try:
+                _sudo_checked(
+                    'git apply {}{}'.format(
+                        '--reject ' if reject else '', shlex_quote(diff)
+                    ),
+                    sudo_user=sudo_user,
                 )
-            else:
-                print(colors.green('Nothing to commit! Continue'))
-
-        except Exception as e:
-            print(colors.red('\U000026D4 Error applying diff'))
+            except ApplyError as error:
+                if not reject:
+                    raise
+                _print_message(colors.yellow('Some rejects ...\n{}'.format(as_text(error))))
+                prompt(colors.red(
+                    'Manual resolve. Resolve the rejected hunks and remove '
+                    'the .rej files. Press Enter to continue.'
+                ))
+                rejected_files = _sudo_checked(
+                    "git ls-files --others --exclude-standard -- '*.rej'",
+                    sudo_user=sudo_user,
+                ).strip()
+                if rejected_files:
+                    raise ApplyError(
+                        'Unresolved rejected hunks:\n{}'.format(rejected_files)
+                    )
+            changed = _sudo_checked(
+                'git status --porcelain', sudo_user=sudo_user
+            ).strip()
+            if not changed:
+                raise ApplyError(
+                    'The diff {} produced no changes; no commit was created'.format(diff)
+                )
+            _print_message(colors.green('Commit!'))
+            _sudo_checked('git add -A', sudo_user=sudo_user)
+            _sudo_checked(
+                'git commit -m {}'.format(shlex_quote(message)),
+                sudo_user=sudo_user,
+            )
+            current_head = _sudo_checked(
+                'git rev-parse HEAD', sudo_user=sudo_user
+            ).strip()
+            if current_head == previous_head:
+                raise ApplyError(
+                    'No commit was created after applying diff {}'.format(diff)
+                )
+            return current_head
+        except Exception as error:
+            apply_error = error
+            _print_message(colors.red('\U000026D4 Error applying diff'))
             raise
         finally:
-            if stash and stashed:
-                print(colors.yellow('Unstashing...'))
-                sudo("git stash pop")
-            env.sudo_prefix = old_prefix
+            try:
+                if stashed:
+                    _print_message(colors.yellow('Unstashing...'))
+                    try:
+                        _sudo_checked('git stash pop', sudo_user=sudo_user)
+                    except Exception as stash_error:
+                        if apply_error is None:
+                            raise
+                        _tqdm_write(colors.red(
+                            'Could not restore stashed changes: {}'.format(as_text(stash_error))
+                        ))
+            finally:
+                env.sudo_prefix = old_prefix
 
 
 class GitApplier(object):
@@ -426,7 +482,9 @@ def find_from_to_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def export_patches_from_git(from_commit, to_commit, pr_number):
+def export_patches_from_git(
+    from_commit, to_commit, pr_number, skip_directory_pattern=None
+):
     logger.info('Exporting patches from %s to %s' % (from_commit, to_commit))
     deploy_path = "deploy/patches/{}".format(pr_number)
     try:
@@ -439,6 +497,16 @@ def export_patches_from_git(from_commit, to_commit, pr_number):
     local("git format-patch -o deploy/patches/%s %s..%s" % (
         pr_number, from_commit, to_commit)
     )
+    if skip_directory_pattern:
+        for patch_path in glob.glob(os.path.join(deploy_path, '*.patch')):
+            with io.open(patch_path, 'r', encoding='utf-8') as patch_file:
+                content = patch_file.read()
+            filtered = filter_patch_paths(content, skip_directory_pattern)
+            if 'diff --git ' not in filtered:
+                os.unlink(patch_path)
+                continue
+            with io.open(patch_path, 'w', encoding='utf-8') as patch_file:
+                patch_file.write(filtered)
 
 
 @task
@@ -482,8 +550,10 @@ def get_commits(pr_number, owner='gisce', repository='erp'):
 
 
 @task
-def export_diff_from_github(pr_number, owner='gisce', repository='erp',
-                            from_commit=None):
+def export_diff_from_github(
+    pr_number, owner='gisce', repository='erp', from_commit=None,
+    skip_directory_pattern=None
+):
     try:
         local("mkdir -p %s" % 'deploy/patches')
     except BaseException as e:
@@ -523,14 +593,16 @@ def export_diff_from_github(pr_number, owner='gisce', repository='erp',
     r = requests.get(url, headers=headers)
     if r.status_code != 200:
         abort('Unable to export diff from GitHub')
+    content = filter_patch_paths(r.text, skip_directory_pattern)
     with open(diff_path, 'wb') as f:
-        f.write(r.text.encode('utf-8'))
+        f.write(content.encode('utf-8'))
     return from_commit, (to_commit if from_commit else None)
 
 
 @task
 def export_patches_from_github(
-    pr_number, from_commit=None, owner='gisce', repository='erp'
+    pr_number, from_commit=None, owner='gisce', repository='erp',
+    skip_directory_pattern=None
 ):
     patch_folder = "deploy/patches/%s" % pr_number
     try:
@@ -566,9 +638,13 @@ def export_patches_from_github(
         r = requests.get(commit['url'], headers=patch_headers)
         message = slugify(commit['commit']['message'][:64])
         filename = '%04i-%s.patch' % (patch_number, message)
+        content = filter_patch_paths(r.text, skip_directory_pattern)
+        if 'diff --git ' not in content:
+            logger.info('Skipping empty patch %s after path filtering.', filename)
+            continue
         with open(os.path.join(patch_folder, filename), 'wb') as patch:
             logger.info('Exporting patch %s.' % filename)
-            patch.write(r.text.encode('utf-8'))
+            patch.write(content.encode('utf-8'))
 
 
 @task
@@ -693,8 +769,10 @@ def mark_deploy_status(
     )
     payload = {'state': state}
     if description is not None:
-        payload['description'] = description
+        # GitHub limits deployment status descriptions to 140 characters.
+        payload['description'] = description[:140]
     r = requests.post(url, data=json.dumps(payload), headers=headers)
+    r.raise_for_status()
     logger.info('Deploy %s marked as %s' % (deploy_id, state))
     if state == 'success' and pr_number and environment is not None and not no_set_label:
         url = "https://api.github.com/repos/{}/{}/issues/{}/labels".format(
@@ -764,7 +842,8 @@ def apply_pr(
         hostname=False, src='/home/erp/src', owner='gisce', repository='erp',
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
         as_diff=False, environment='pro', reject=False,
-        skip_rolling_check=False, no_set_label=False, squash=False
+        skip_rolling_check=False, no_set_label=False, squash=False,
+        skip_directory_pattern=None
 ):
     diff_from_commit = None
     diff_to_commit = None
@@ -783,18 +862,18 @@ def apply_pr(
         check_am_session(src=src, repository=repository_name, sudo_user=sudo_user)
     except NetworkError as e:
         logger.error('Error connecting to specified host')
-        logger.error(e)
+        log_error(logger, e)
         raise
     if re_deploy:
-        tqdm.write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
+        _tqdm_write(colors.blue('\U0001F50E Trying to find last success deploymnet...'))
         last_deploy, from_commit = get_last_deploy(pr_number, hostname, owner, repository)
         if last_deploy:
-            tqdm.write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
+            _tqdm_write(colors.blue('\U00002705 Got it! is {sha}.'.format(**last_deploy)))
             if last_deploy['sha'] == from_commit:
-                tqdm.write(colors.red('\U000026D4 No commits to deploy...'))
+                _tqdm_write(colors.red('\U000026D4 No commits to deploy...'))
                 exit(-1)
         else:
-            tqdm.write(colors.blue('\U0001F62F Not found...'))
+            _tqdm_write(colors.blue('\U0001F62F Not found...'))
         resp = input('Deploy from {}? (y/n): '.format(from_commit or '0'))
         if resp.upper() != 'Y':
             exit(-1)
@@ -803,7 +882,7 @@ def apply_pr(
                                owner=owner,
                                repository=repository)
     if not deploy_id:
-        tqdm.write(colors.magenta(
+        _tqdm_write(colors.magenta(
             'No deploy id! you must mark the Pull Request manually'
         ))
     try:
@@ -814,7 +893,7 @@ def apply_pr(
                            environment=environment,
                            no_set_label=no_set_label
                            )
-        tqdm.write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
+        _tqdm_write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
             deploy_id
         )))
         if not skip_upload:
@@ -822,6 +901,7 @@ def apply_pr(
                 diff_from_commit, diff_to_commit = export_diff_from_github(
                     pr_number, owner=owner, repository=repository,
                     from_commit=diff_from_commit,
+                    skip_directory_pattern=skip_directory_pattern,
                 )
                 upload_diff(
                     pr_number, src=src, repository=repository,
@@ -831,7 +911,8 @@ def apply_pr(
                 export_patches_from_github(pr_number,
                                            from_commit,
                                            owner=owner,
-                                           repository=repository)
+                                           repository=repository,
+                                           skip_directory_pattern=skip_directory_pattern)
                 upload_patches(pr_number,
                                from_commit,
                                src=src,
@@ -842,7 +923,7 @@ def apply_pr(
                 diff_to_commit = find_from_to_commits(
                     pr_number, owner=owner, repository=repository
                 )[1]
-            tqdm.write(colors.yellow("Applying diff \U0001F648"))
+            _tqdm_write(colors.yellow("Applying diff \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_diff(
                 pr_number, src=src, repository=repository, sudo_user=sudo_user,
@@ -854,7 +935,7 @@ def apply_pr(
                 from_ = from_commit
             else:
                 from_ = from_number
-            tqdm.write(colors.yellow("Applying patches \U0001F648"))
+            _tqdm_write(colors.yellow("Applying patches \U0001F648"))
             check_am_session(src=src, repository=repository_name)
             result = apply_remote_patches(
                 pr_number,
@@ -873,18 +954,21 @@ def apply_pr(
                            no_set_label=no_set_label,
                            environment=environment
                            )
-        tqdm.write(colors.green("Deploy success \U0001F680"))
+        _tqdm_write(colors.green("Deploy success \U0001F680"))
         return True
     except Exception as e:
-        logger.error(e)
-        mark_deploy_status(deploy_id,
-                           state='error',
-                           description='{}'.format(e),
-                           owner=owner,
-                           repository=repository,
-                           no_set_label=no_set_label
-                           )
-        tqdm.write(colors.red("Deploy failure \U0001F680"))
+        log_error(logger, e)
+        try:
+            mark_deploy_status(deploy_id,
+                               state='error',
+                               description=as_text(e),
+                               owner=owner,
+                               repository=repository,
+                               no_set_label=no_set_label
+                               )
+        except Exception as status_error:
+            log_error(logger, status_error, prefix='Could not mark deployment as failed: ')
+        _tqdm_write(colors.red("Deploy failure \U0001F680"))
         return False
 
 

@@ -7,7 +7,6 @@ import os
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 from contextlib import contextmanager
 
@@ -16,6 +15,10 @@ from fabric import colors
 from tqdm import tqdm
 
 from apply_pr.exceptions import ApplyError
+from apply_pr.console import (
+    as_text as _as_text, console_message, log_error,
+    print_message as _print_message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -41,47 +44,12 @@ class CommandResult(object):
         return self.return_code != 0
 
 
-def _as_text(value):
-    if isinstance(value, six.text_type):
-        return value
-    if isinstance(value, bytes):
-        return value.decode('utf-8', 'replace')
-    try:
-        return six.text_type(value)
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        representation = repr(value)
-        if isinstance(representation, six.text_type):
-            return representation
-        return representation.decode('utf-8', 'replace')
-
-
 def _log_error(error, prefix=None):
-    message = _as_text(error)
-    if prefix:
-        message = '{}{}'.format(prefix, message)
-    if six.PY2:
-        # Python 2's logging formatter mixes its byte format with the Unicode
-        # record and tries to encode it as ASCII. An ASCII-only escaped value
-        # works with both byte and Unicode formatters; the console output still
-        # displays the original message as UTF-8.
-        logger.error(b'%s', message.encode('ascii', 'backslashreplace'))
-    else:
-        logger.error('%s', message)
-
-
-def _print_message(message):
-    message = _as_text(message)
-    if six.PY2:
-        sys.stdout.write(message.encode('utf-8', 'replace') + b'\n')
-    else:
-        sys.stdout.write(message + '\n')
+    log_error(logger, error, prefix=prefix)
 
 
 def _tqdm_write(message):
-    message = _as_text(message)
-    if six.PY2:
-        message = message.encode('utf-8', 'replace')
-    tqdm.write(message)
+    tqdm.write(console_message(message))
 
 
 def repository_path(src, repository):
@@ -303,7 +271,7 @@ def apply_pr(
     src='/home/erp/src', owner='gisce', repository='erp', auto_exit=False,
     force_name=None, re_deploy=False, as_diff=False, environment='pro',
     reject=False, skip_rolling_check=False, no_set_label=False,
-    input_func=None, squash=False
+    input_func=None, squash=False, skip_directory_pattern=None
 ):
     """Apply a GitHub pull request directly to a local checkout."""
     repository_name = force_name or repository
@@ -374,6 +342,7 @@ def apply_pr(
                 backend.export_diff_from_github(
                     pr_number, owner=owner, repository=repository,
                     from_commit=from_commit,
+                    skip_directory_pattern=skip_directory_pattern,
                 )
             else:
                 backend.export_patches_from_github(
@@ -381,6 +350,7 @@ def apply_pr(
                     from_commit,
                     owner=owner,
                     repository=repository,
+                    skip_directory_pattern=skip_directory_pattern,
                 )
 
         if as_diff:
@@ -392,28 +362,39 @@ def apply_pr(
                 raise LocalApplyError(
                     'The pull request diff was not downloaded'
                 )
-            _apply_diff(
-                checkout,
-                diff_path,
-                pr_number,
-                reject=reject,
-                input_func=input_func,
-            )
+            if os.path.getsize(diff_path):
+                _apply_diff(
+                    checkout,
+                    diff_path,
+                    pr_number,
+                    reject=reject,
+                    input_func=input_func,
+                )
+            else:
+                _tqdm_write(colors.green('Nothing to commit! Continue'))
         else:
             _tqdm_write(colors.yellow('Applying patches \U0001F648'))
-            patches = _select_patches(
-                workdir,
-                pr_number,
-                from_number=0 if from_commit else from_number,
-            )
-            _apply_patches(
-                checkout,
-                patches,
-                auto_exit=auto_exit,
-                input_func=input_func,
-                squash=squash,
-                pr_number=pr_number,
-            )
+            try:
+                patches = _select_patches(
+                    workdir,
+                    pr_number,
+                    from_number=0 if from_commit else from_number,
+                )
+            except LocalApplyError:
+                if not skip_directory_pattern:
+                    raise
+                patches = []
+            if patches:
+                _apply_patches(
+                    checkout,
+                    patches,
+                    auto_exit=auto_exit,
+                    input_func=input_func,
+                    squash=squash,
+                    pr_number=pr_number,
+                )
+            else:
+                _tqdm_write(colors.green('Nothing to commit! Continue'))
 
         backend.mark_deploy_status(
             deploy_id,
