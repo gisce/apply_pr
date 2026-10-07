@@ -84,6 +84,13 @@ sastre deploy --local --src /home/user/src --repository gisce/erp \
   --pr 1234 --environ test
 ```
 
+Remote `--as-diff` deployments require an existing, readable, nonempty diff and
+a successful Git commit that advances `HEAD`. A missing or empty diff (including
+one emptied by filtering), an application error, or a failed commit reports
+`Deploy failure` and marks the GitHub deployment as an error. Failed remote
+commands include the command, exit code, and server output in the error message.
+Use `--exit-code-failure` to also return exit code 1 to the calling shell.
+
 `--repository` accepts either a repository name or the `owner/repository`
 format. The latter sets both values and takes precedence over `--owner`.
 `--owner` remains available for backwards compatibility.

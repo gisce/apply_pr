@@ -7,7 +7,6 @@ import os
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 from contextlib import contextmanager
 
@@ -16,6 +15,10 @@ from fabric import colors
 from tqdm import tqdm
 
 from apply_pr.exceptions import ApplyError
+from apply_pr.console import (
+    as_text as _as_text, console_message, log_error,
+    print_message as _print_message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -41,47 +44,12 @@ class CommandResult(object):
         return self.return_code != 0
 
 
-def _as_text(value):
-    if isinstance(value, six.text_type):
-        return value
-    if isinstance(value, bytes):
-        return value.decode('utf-8', 'replace')
-    try:
-        return six.text_type(value)
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        representation = repr(value)
-        if isinstance(representation, six.text_type):
-            return representation
-        return representation.decode('utf-8', 'replace')
-
-
 def _log_error(error, prefix=None):
-    message = _as_text(error)
-    if prefix:
-        message = '{}{}'.format(prefix, message)
-    if six.PY2:
-        # Python 2's logging formatter mixes its byte format with the Unicode
-        # record and tries to encode it as ASCII. An ASCII-only escaped value
-        # works with both byte and Unicode formatters; the console output still
-        # displays the original message as UTF-8.
-        logger.error(b'%s', message.encode('ascii', 'backslashreplace'))
-    else:
-        logger.error('%s', message)
-
-
-def _print_message(message):
-    message = _as_text(message)
-    if six.PY2:
-        sys.stdout.write(message.encode('utf-8', 'replace') + b'\n')
-    else:
-        sys.stdout.write(message + '\n')
+    log_error(logger, error, prefix=prefix)
 
 
 def _tqdm_write(message):
-    message = _as_text(message)
-    if six.PY2:
-        message = message.encode('utf-8', 'replace')
-    tqdm.write(message)
+    tqdm.write(console_message(message))
 
 
 def repository_path(src, repository):
