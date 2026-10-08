@@ -90,7 +90,7 @@ def _sudo_checked(command, sudo_user='erp', action='Remote command'):
                 action=action,
                 code=result.return_code,
                 command=command,
-                output=result.strip(),
+                output=as_text(result).strip(),
             )
         )
     return result
@@ -298,7 +298,9 @@ class PatchApplier(object):
                 ).strip()
                 if rejected_files:
                     raise ApplyError(
-                        'Unresolved rejected hunks:\n{}'.format(rejected_files)
+                        'Unresolved rejected hunks:\n{}'.format(
+                            as_text(rejected_files)
+                        )
                     )
             changed = _sudo_checked(
                 'git status --porcelain', sudo_user=sudo_user
@@ -358,10 +360,7 @@ class GitApplier(object):
 
     def catch_result(self, result):
         result_failed = result.failed
-        if six.PY3:
-            result_text = bytes(result, 'utf-8').decode('utf-8')
-        else:
-            result_text = result.decode('utf-8')
+        result_text = as_text(result)
         for line in result_text.split('\n'):
             if re.match('Applying: ', line):
                 tqdm.write(colors.green(line))

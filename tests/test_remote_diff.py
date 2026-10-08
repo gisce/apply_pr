@@ -44,6 +44,17 @@ class RemoteResult(six.text_type):
         return result
 
 
+class RemoteBytesResult(bytes):
+    """Mimic the raw byte output fabric returns for remote commands on PY2."""
+
+    def __new__(cls, value, return_code=0):
+        result = super(RemoteBytesResult, cls).__new__(cls, value)
+        result.return_code = return_code
+        result.failed = return_code != 0
+        result.succeeded = not result.failed
+        return result
+
+
 class RemoteDiffDeploymentTest(unittest.TestCase):
     """Exercise the remote workflow using real Git and a local sudo transport."""
 
@@ -187,6 +198,19 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         self.assertFalse(self._deploy())
 
         self._assert_failure("No s'ha pogut aplicar")
+        self.assertIn(diagnostic, self.statuses[-1][1]['description'])
+        logged_diagnostic = 'peda\\xe7' if six.PY2 else u'pedaç'
+        self.assertIn(logged_diagnostic, self.error_stream.getvalue())
+
+    def test_utf8_remote_output_is_decoded_before_formatting(self):
+        diagnostic = u"Error: no s'ha pogut aplicar el pedaç"
+        self.overrides['git apply ' + self.diff_path] = RemoteBytesResult(
+            diagnostic.encode('utf-8'), 1
+        )
+
+        self.assertFalse(self._deploy())
+
+        self._assert_failure("no s'ha pogut aplicar")
         self.assertIn(diagnostic, self.statuses[-1][1]['description'])
         logged_diagnostic = 'peda\\xe7' if six.PY2 else u'pedaç'
         self.assertIn(logged_diagnostic, self.error_stream.getvalue())
