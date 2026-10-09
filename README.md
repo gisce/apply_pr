@@ -105,7 +105,10 @@ With `--as-diff`, `--from-commit` is excluded from the generated comparison;
 it accepts either a commit SHA or a GitHub commit URL. `--reject` applies the
 diff with reject handling. `--re-deploy` and `--as-diff` cannot be combined.
 If a remote diff is missing, unreadable, empty, cannot be applied, or does not
-produce a commit, the deployment is reported as failed. Use
+produce a commit, the deployment is reported as failed. A failed diff is rolled
+back before pre-existing stashed work is restored, so rejected hunks and other
+partial changes are not mixed into the target checkout. If rollback itself
+fails, the stash is kept instead of being applied over an inconsistent tree. Use
 `--exit-code-failure` when automation must also receive a non-zero exit code.
 
 ### Local checkout

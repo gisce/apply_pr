@@ -263,6 +263,8 @@ class PatchApplier(object):
         env.sudo_prefix = "sudo -H -S -p '%(sudo_prompt)s' "
         stashed = False
         apply_error = None
+        previous_head = None
+        rollback_error = None
         if message is None:
             message = 'Apply {}'.format(diff)
         try:
@@ -329,7 +331,26 @@ class PatchApplier(object):
             raise
         finally:
             try:
-                if stashed:
+                if apply_error is not None and previous_head is not None:
+                    try:
+                        _sudo_checked(
+                            'git reset --hard {}'.format(previous_head),
+                            sudo_user=sudo_user,
+                            action='Rolling back the failed diff',
+                        )
+                        _sudo_checked(
+                            'git clean -fd',
+                            sudo_user=sudo_user,
+                            action='Cleaning files created by the failed diff',
+                        )
+                    except Exception as error:
+                        rollback_error = error
+                        _tqdm_write(colors.red(
+                            'Could not roll back the failed diff: {}'.format(
+                                as_text(error)
+                            )
+                        ))
+                if stashed and rollback_error is None:
                     _print_message(colors.yellow('Unstashing...'))
                     try:
                         _sudo_checked('git stash pop', sudo_user=sudo_user)

@@ -243,7 +243,21 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         self.assertFalse(self._deploy(reject=True))
 
         self._assert_failure('Unresolved rejected hunks')
-        self.assertTrue(os.path.isfile(os.path.join(self.checkout, 'message.txt.rej')))
+        self.assertFalse(os.path.isfile(os.path.join(self.checkout, 'message.txt.rej')))
+        self.assertEqual(self._git('status', '--porcelain').strip(), '')
+
+    def test_failed_reject_restores_preexisting_work_without_partial_changes(self):
+        self._create_conflicting_commit()
+        self._write('local-only.txt', u'feina prèvia\n')
+
+        self.assertFalse(self._deploy(reject=True))
+
+        self._assert_failure('Unresolved rejected hunks')
+        self.assertFalse(os.path.isfile(os.path.join(self.checkout, 'message.txt.rej')))
+        self.assertEqual(self._git('show', 'HEAD:message.txt'), 'conflicting change\n')
+        with io.open(os.path.join(self.checkout, 'local-only.txt'), encoding='utf-8') as stream:
+            self.assertEqual(stream.read(), u'feina prèvia\n')
+        self.assertEqual(self._git('status', '--porcelain').strip(), '?? local-only.txt')
 
     def test_manually_resolved_and_staged_rejects_are_committed(self):
         self._create_conflicting_commit()
@@ -284,7 +298,7 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         self._assert_failure('blocked by pre-commit')
         self.assertIn('Command: git commit -m ', self.statuses[-1][1]['description'])
         self.assertEqual(self._git('rev-parse', 'HEAD').strip(), self.previous_head)
-        self.assertEqual(self._git('diff', '--cached', '--name-only').strip(), 'message.txt')
+        self.assertEqual(self._git('status', '--porcelain').strip(), '')
 
     def test_failed_git_add_is_an_error(self):
         self._write('.git/index.lock', '')
@@ -343,6 +357,18 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
 
         self._assert_failure('Original application error')
         self.assertTrue(any('Stash restoration error' in message for message in self.messages))
+
+    def test_failed_rollback_keeps_stash_and_does_not_hide_application_error(self):
+        self._write('local-only.txt', 'local work\n')
+        self.overrides['git apply ' + self.diff_path] = RemoteResult('Original application error', 1)
+        self.overrides['git reset --hard ' + self.previous_head] = RemoteResult('Reset failed', 1)
+
+        self.assertFalse(self._deploy())
+
+        self._assert_failure('Original application error')
+        self.assertTrue(any('Reset failed' in message for message in self.messages))
+        self.assertFalse(any(command == 'git stash pop' for command, user in self.commands))
+        self.assertIn('stash@{0}', self._git('stash', 'list'))
 
     def test_status_reporting_failure_does_not_hide_the_git_error(self):
         self._write(self.diff_path, '')
