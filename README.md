@@ -10,6 +10,25 @@ It does not clone or provision the target repository: the checkout must
 already exist below `--src` and must be in the state expected by your
 deployment process.
 
+### Remote repository lock migration
+
+Remote deployments create `/tmp/apply_pr-locks` with mode `0700`, owned by
+the SSH deployment user. Older development versions created this directory
+with mode `1777`. Before deploying this version on a host where that directory
+already exists:
+
+1. Stop every `apply_pr` process that can reach the host.
+2. Check that `/tmp/apply_pr-locks` is a real directory owned by the SSH
+   deployment user, and inspect its contents before changing it.
+3. As that deployment user, run `chmod 0700 /tmp/apply_pr-locks`.
+4. Run one deployment as a preflight and verify that it acquires and releases
+   the repository lock.
+
+Do not change the permissions while deployments are running. A mode other
+than `0700`, unexpected ownership, or a symbolic link is rejected. All
+deployments to a host must use the same SSH deployment user; separate users
+cannot safely share this per-user lock directory.
+
 ## Requirements
 
 - Python 2.7 or Python 3.11

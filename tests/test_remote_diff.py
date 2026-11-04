@@ -17,6 +17,33 @@ from fabric.api import env
 from fabric.utils import abort
 
 from apply_pr import fabfile
+from apply_pr.remote_lock import RemoteRepositoryLock, RepositoryLocked
+
+
+class LocalChannel(object):
+    def exec_command(self, command):
+        self.process = subprocess.Popen(
+            command, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        )
+
+    def makefile(self, mode):
+        self.stdout = self.process.stdout
+        return self.stdout
+
+    def close(self):
+        self.process.stdin.close()
+        self.process.wait()
+        self.stdout.close()
+
+
+class LocalTransport(object):
+    def open_session(self):
+        return LocalChannel()
+
+
+class LocalClient(object):
+    def get_transport(self):
+        return LocalTransport()
 
 
 class LoggingCapture(object):
@@ -82,6 +109,12 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         self.messages = []
         self.overrides = {}
         self.probe_notice = ''
+        self.lock_directory = os.path.join(self.tempdir, 'locks')
+
+        class TestRepositoryLock(RemoteRepositoryLock):
+            lock_directory = self.lock_directory
+
+        self.test_repository_lock = TestRepositoryLock
 
         self.old_backend = {}
         for name, replacement in (
@@ -91,6 +124,8 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
             ('export_diff_from_github', lambda *args, **kwargs: (None, None)),
             ('upload_diff', lambda *args, **kwargs: None),
             ('prompt', lambda *args, **kwargs: ''),
+            ('_remote_lock_client', lambda: LocalClient()),
+            ('RemoteRepositoryLock', TestRepositoryLock),
         ):
             self.old_backend[name] = getattr(fabfile, name)
             setattr(fabfile, name, replacement)
@@ -139,6 +174,12 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         return result
 
     def _mark_status(self, deploy_id, state='success', **kwargs):
+        if state == 'success':
+            contender = self.test_repository_lock(
+                os.path.join(self.checkout, '.git'), LocalClient(), 'local', '43'
+            )
+            with self.assertRaises(RepositoryLocked):
+                contender.acquire()
         self.statuses.append((state, kwargs))
 
     def _capture_message(self, message):
@@ -174,6 +215,11 @@ class RemoteDiffDeploymentTest(unittest.TestCase):
         self.assertTrue(any('Deploy success' in message for message in self.messages))
         self.assertTrue(all(user == 'custom-erp' for command, user in self.commands
                             if command.startswith(('test ', 'git '))))
+        reusable = self.test_repository_lock(
+            os.path.join(self.checkout, '.git'), LocalClient(), 'local', '43'
+        )
+        reusable.acquire()
+        reusable.release()
 
     def test_missing_diff_is_an_error(self):
         os.unlink(os.path.join(self.checkout, self.diff_path))
