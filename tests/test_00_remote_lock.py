@@ -5,6 +5,7 @@ import unittest
 import shutil
 import subprocess
 import tempfile
+import os
 
 from apply_pr.remote_lock import RemoteRepositoryLock, RepositoryLocked
 
@@ -137,6 +138,36 @@ class RemoteRepositoryLockTest(unittest.TestCase):
             first.release()
             second.acquire()
             second.release()
+        finally:
+            shutil.rmtree(lock_directory)
+
+    def test_rejects_lock_directory_with_unsafe_permissions(self):
+        lock_directory = tempfile.mkdtemp(prefix='apply-pr-lock-test-')
+        try:
+            os.chmod(lock_directory, 0o777)
+            lock = RemoteRepositoryLock(
+                '/srv/src/erp/.git', LocalClient(), self.host_string, '178'
+            )
+            lock.lock_directory = lock_directory
+
+            with self.assertRaises(RepositoryLocked):
+                lock.acquire()
+        finally:
+            shutil.rmtree(lock_directory)
+
+    def test_rejects_symbolic_link_as_lock_file(self):
+        lock_directory = tempfile.mkdtemp(prefix='apply-pr-lock-test-')
+        target = os.path.join(lock_directory, 'target')
+        try:
+            lock = RemoteRepositoryLock(
+                '/srv/src/erp/.git', LocalClient(), self.host_string, '178'
+            )
+            lock.lock_directory = lock_directory
+            os.symlink(target, lock._lock_path())
+
+            with self.assertRaises(RepositoryLocked):
+                lock.acquire()
+            self.assertFalse(os.path.exists(target))
         finally:
             shutil.rmtree(lock_directory)
 

@@ -39,7 +39,12 @@ class RemoteRepositoryLock(object):
             'repository': self.common_directory,
         }, sort_keys=True)
         command = (
-            'mkdir -m 1777 -p {directory} && exec flock -n {lock} sh -c '
+            'mkdir -m 700 -p {directory} && '
+            'test -d {directory} && test ! -L {directory} && '
+            'test "$(stat -c %u {directory})" = "$(id -u)" && '
+            'test "$(stat -c %a {directory})" = 700 && '
+            'test ! -L {lock} && '
+            'exec flock -n {lock} sh -c '
             '{script} sh {lock} {metadata}'
         ).format(
             directory=pipes.quote(self.lock_directory),
@@ -58,8 +63,8 @@ class RemoteRepositoryLock(object):
             self.channel.close()
             self.channel = None
             raise RepositoryLocked(
-                'Repository {} is already being modified by another '
-                'apply_pr process ({})'.format(
+                'Repository {} is locked or its lock directory is unsafe '
+                '({})'.format(
                     self.common_directory, lock_path
                 )
             )

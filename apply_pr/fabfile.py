@@ -838,6 +838,11 @@ def check_is_rolling(src='/home/erp/src', repository='erp', sudo_user='erp'):
                 abort(message)
 
 
+def _remote_lock_client():
+    """Return the SSH client used to keep the repository lock alive."""
+    return connections[env.host_string]
+
+
 @task
 def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
     with settings(hide('everything'), sudo_user=sudo_user, warn_only=True):
@@ -897,7 +902,7 @@ def apply_pr(
                 user=sudo_user,
             ).strip()
     repository_lock = RemoteRepositoryLock(
-        common_directory, connections[env.host_string], env.host_string,
+        common_directory, _remote_lock_client(), env.host_string,
         pr_number=pr_number,
     )
     try:
