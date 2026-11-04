@@ -59,6 +59,8 @@ apply_pr_options = github_options + [
     click.option("--skip-rolling-check", help="Allow to skip rolling branch check", is_flag=True, default=False),
     click.option("--exit-code-failure", help="If enabled, process will terminate with exit 1 if had some error", is_flag=True, default=False),
     click.option("--no-set-label", help="Don't set deployed label on PR", is_flag=True, default=False),
+    click.option("--simulation", help="Test applicability without changing the target or GitHub deployment state",
+                 is_flag=True, default=False),
     click.option(
         "--skip-directory-pattern",
         help="Exclude diff/patch paths matching this regular expression",
@@ -169,7 +171,7 @@ def apply_pr(
     auto_exit=True, force_name=None, re_deploy=False, as_diff=False, prs='',
     environ='pre', reject=False, skip_rolling_check=False, exit_code_failure=False,
     no_set_label=False, proxy=None, local_mode=False, squash=False,
-    skip_directory_pattern=None
+    skip_directory_pattern=None, simulation=False
 ):
     """
     Deploy a PR into a remote server via Fabric or a local checkout
@@ -254,7 +256,8 @@ def apply_pr(
                 environment=environ, reject=reject,
                 skip_rolling_check=skip_rolling_check,
                 no_set_label=no_set_label,
-                skip_directory_pattern=skip_directory_pattern
+                skip_directory_pattern=skip_directory_pattern,
+                simulation=simulation
             )
             result = {'local': local_result}
         else:
@@ -267,7 +270,8 @@ def apply_pr(
                 squash=squash,
                 environment=environ, reject=reject, skip_rolling_check=skip_rolling_check,
                 no_set_label=no_set_label,
-                skip_directory_pattern=skip_directory_pattern
+                skip_directory_pattern=skip_directory_pattern,
+                simulation=simulation
             )
         result_list = list(result.items())
         if not result_list[0][1]:
@@ -277,7 +281,7 @@ def apply_pr(
         click.echo(colors.red(
             u"Failed PRS :{}".format(' '.join(failed_prs))
         ))
-        if exit_code_failure:
+        if exit_code_failure or simulation:
             sys.exit(1)
     return results
 

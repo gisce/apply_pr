@@ -78,6 +78,16 @@ if config.get('no_sudo_mode'):
 DEPLOYED = {'pro': 'deployed', 'pre': 'deployed PRE', 'test': 'deployed PRE'}
 
 
+class _DirectCallRepositoryLock(object):
+    """Compatibility lock for tests/direct calls without a Fabric host."""
+
+    def acquire(self):
+        return self
+
+    def release(self):
+        pass
+
+
 def _tqdm_write(message):
     tqdm.write(console_message(message))
 
@@ -849,6 +859,48 @@ def check_am_session(src='/home/erp/src', repository='erp', sudo_user='erp'):
                 abort(message)
 
 
+def create_simulation_worktree(src, repository, sudo_user='erp'):
+    repository_path = '{}/{}'.format(src, repository)
+    simulation_path = _sudo_checked(
+        'mktemp -d /tmp/apply-pr-simulation-XXXXXX',
+        sudo_user=sudo_user,
+        action='Create simulation directory',
+    ).strip()
+    try:
+        sudo('rmdir {}'.format(shlex_quote(simulation_path)), user=sudo_user)
+        with cd(repository_path):
+            _sudo_checked(
+                'git worktree add --detach {} HEAD'.format(
+                    shlex_quote(simulation_path)
+                ),
+                sudo_user=sudo_user,
+                action='Create simulation worktree',
+            )
+    except Exception:
+        sudo('rm -rf -- {}'.format(shlex_quote(simulation_path)),
+             user=sudo_user)
+        raise
+    return os.path.dirname(simulation_path), os.path.basename(simulation_path)
+
+
+def remove_simulation_worktree(src, repository, simulation_src,
+                               simulation_repository, sudo_user='erp'):
+    repository_path = '{}/{}'.format(src, repository)
+    simulation_path = '{}/{}'.format(simulation_src, simulation_repository)
+    with cd(repository_path):
+        try:
+            _sudo_checked(
+                'git worktree remove --force {}'.format(
+                    shlex_quote(simulation_path)
+                ),
+                sudo_user=sudo_user,
+                action='Remove simulation worktree',
+            )
+        finally:
+            sudo('rm -rf -- {}'.format(shlex_quote(simulation_path)),
+                 user=sudo_user)
+
+
 @task
 def apply_pr(
         pr_number, from_number=0, from_commit=None, skip_upload=False,
@@ -856,7 +908,7 @@ def apply_pr(
         sudo_user='erp', auto_exit=False, force_name=None, re_deploy=False,
         as_diff=False, environment='pro', reject=False,
         skip_rolling_check=False, no_set_label=False, squash=False,
-        skip_directory_pattern=None
+        skip_directory_pattern=None, simulation=False
 ):
     diff_from_commit = None
     diff_to_commit = None
@@ -896,39 +948,48 @@ def apply_pr(
                 'cd "$(git rev-parse --git-common-dir)" && pwd -P',
                 user=sudo_user,
             ).strip()
-    repository_lock = RemoteRepositoryLock(
-        common_directory, connections[env.host_string], env.host_string,
-        pr_number=pr_number,
-    )
+    if env.host_string:
+        repository_lock = RemoteRepositoryLock(
+            common_directory, connections[env.host_string], env.host_string,
+            pr_number=pr_number,
+        )
+    else:
+        repository_lock = _DirectCallRepositoryLock()
     try:
         repository_lock.acquire()
     except RepositoryLocked as e:
         logger.error(e)
         tqdm.write(colors.red(str(e)))
         return False
+    deploy_id = None
+    simulation_target = None
     try:
-        deploy_id = mark_to_deploy(pr_number,
-                                   hostname=hostname,
-                                   owner=owner,
-                                   repository=repository)
-    except Exception:
-        repository_lock.release()
-        raise
-    if not deploy_id:
-        _tqdm_write(colors.magenta(
-            'No deploy id! you must mark the Pull Request manually'
-        ))
-    try:
-        mark_deploy_status(deploy_id,
-                           state='pending',
-                           owner=owner,
-                           repository=repository,
-                           environment=environment,
-                           no_set_label=no_set_label
-                           )
-        _tqdm_write(colors.yellow("Marking to deploy ({}) \U0001F680".format(
-            deploy_id
-        )))
+        if simulation:
+            simulation_target = create_simulation_worktree(
+                src, repository_name, sudo_user=sudo_user
+            )
+            apply_src, apply_repository = simulation_target
+            _tqdm_write(colors.yellow(
+                'Simulating deployment in an isolated worktree'
+            ))
+        else:
+            apply_src, apply_repository = src, repository_name
+            deploy_id = mark_to_deploy(
+                pr_number, hostname=hostname, owner=owner,
+                repository=repository,
+            )
+            if not deploy_id:
+                _tqdm_write(colors.magenta(
+                    'No deploy id! you must mark the Pull Request manually'
+                ))
+            mark_deploy_status(
+                deploy_id, state='pending', owner=owner,
+                repository=repository, environment=environment,
+                no_set_label=no_set_label,
+            )
+            _tqdm_write(colors.yellow(
+                "Marking to deploy ({}) \U0001F680".format(deploy_id)
+            ))
         if not skip_upload:
             if as_diff:
                 diff_from_commit, diff_to_commit = export_diff_from_github(
@@ -937,7 +998,7 @@ def apply_pr(
                     skip_directory_pattern=skip_directory_pattern,
                 )
                 upload_diff(
-                    pr_number, src=src, repository=repository,
+                    pr_number, src=apply_src, repository=apply_repository,
                     sudo_user=sudo_user
                 )
             else:
@@ -948,8 +1009,8 @@ def apply_pr(
                                            skip_directory_pattern=skip_directory_pattern)
                 upload_patches(pr_number,
                                from_commit,
-                               src=src,
-                               repository=repository_name,
+                               src=apply_src,
+                               repository=apply_repository,
                                sudo_user=sudo_user)
         if as_diff:
             if diff_from_commit and not diff_to_commit:
@@ -957,9 +1018,10 @@ def apply_pr(
                     pr_number, owner=owner, repository=repository
                 )[1]
             _tqdm_write(colors.yellow("Applying diff \U0001F648"))
-            check_am_session(src=src, repository=repository_name)
+            check_am_session(src=apply_src, repository=apply_repository)
             result = apply_remote_diff(
-                pr_number, src=src, repository=repository, sudo_user=sudo_user,
+                pr_number, src=apply_src, repository=apply_repository,
+                sudo_user=sudo_user,
                 reject=reject, owner=owner, from_commit=diff_from_commit,
                 to_commit=diff_to_commit,
             )
@@ -969,16 +1031,19 @@ def apply_pr(
             else:
                 from_ = from_number
             _tqdm_write(colors.yellow("Applying patches \U0001F648"))
-            check_am_session(src=src, repository=repository_name)
+            check_am_session(src=apply_src, repository=apply_repository)
             result = apply_remote_patches(
                 pr_number,
                 from_,
-                src=src,
-                repository=repository_name,
+                src=apply_src,
+                repository=apply_repository,
                 sudo_user=sudo_user,
                 auto_exit=auto_exit,
                 squash=squash,
             )
+        if simulation:
+            _tqdm_write(colors.green('Simulation success: PR would apply'))
+            return True
         mark_deploy_status(deploy_id,
                            state='success',
                            owner=owner,
@@ -991,20 +1056,31 @@ def apply_pr(
         return True
     except Exception as e:
         log_error(logger, e)
-        try:
-            mark_deploy_status(deploy_id,
-                               state='error',
-                               description=as_text(e),
-                               owner=owner,
-                               repository=repository,
-                               no_set_label=no_set_label
-                               )
-        except Exception as status_error:
-            log_error(logger, status_error, prefix='Could not mark deployment as failed: ')
-        _tqdm_write(colors.red("Deploy failure \U0001F680"))
+        if not simulation:
+            try:
+                mark_deploy_status(deploy_id,
+                                   state='error',
+                                   description=as_text(e),
+                                   owner=owner,
+                                   repository=repository,
+                                   no_set_label=no_set_label
+                                   )
+            except Exception as status_error:
+                log_error(logger, status_error, prefix='Could not mark deployment as failed: ')
+        _tqdm_write(colors.red(
+            "Simulation failure: PR would not apply" if simulation
+            else "Deploy failure \U0001F680"
+        ))
         return False
     finally:
-        repository_lock.release()
+        try:
+            if simulation_target:
+                remove_simulation_worktree(
+                    src, repository_name, simulation_target[0],
+                    simulation_target[1], sudo_user=sudo_user,
+                )
+        finally:
+            repository_lock.release()
 
 
 @task

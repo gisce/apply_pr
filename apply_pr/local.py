@@ -2,6 +2,8 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 import glob
+import fcntl
+import hashlib
 import logging
 import os
 import shutil
@@ -89,7 +91,7 @@ def _git_path(checkout, name):
     return os.path.abspath(path)
 
 
-def validate_repository(checkout, skip_rolling_check=False):
+def validate_repository(checkout, skip_rolling_check=False, allow_dirty=False):
     """Validate the local target before any deployment is registered."""
     if not os.path.isdir(checkout):
         raise LocalApplyError(
@@ -124,11 +126,60 @@ def validate_repository(checkout, skip_rolling_check=False):
             )
 
     status = _run_git(checkout, ['status', '--porcelain'])
-    if status.output.strip():
+    if status.output.strip() and not allow_dirty:
         raise LocalApplyError(
             'The local repository has uncommitted changes; clean or stash '
             'them before deploying'
         )
+
+
+@contextmanager
+def _repository_lock(checkout):
+    common_directory = _run_git(
+        checkout, ['rev-parse', '--git-common-dir']
+    ).output.strip()
+    if not os.path.isabs(common_directory):
+        common_directory = os.path.abspath(
+            os.path.join(checkout, common_directory)
+        )
+    lock_directory = '/tmp/apply_pr-locks'
+    if not os.path.isdir(lock_directory):
+        try:
+            os.makedirs(lock_directory, 0o1777)
+        except OSError:
+            if not os.path.isdir(lock_directory):
+                raise
+    digest = hashlib.sha256(
+        common_directory.encode('utf-8')
+    ).hexdigest()
+    lock_path = os.path.join(lock_directory, '{}.lock'.format(digest))
+    lock_file = open(lock_path, 'a+')
+    try:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError:
+            raise LocalApplyError(
+                'Repository {} is already being modified by another '
+                'apply_pr process ({})'.format(common_directory, lock_path)
+            )
+        yield
+    finally:
+        lock_file.close()
+
+
+@contextmanager
+def _simulation_worktree(checkout):
+    parent = tempfile.mkdtemp(prefix='sastre-simulation-')
+    path = os.path.join(parent, 'checkout')
+    try:
+        _run_git(checkout, ['worktree', 'add', '--detach', path, 'HEAD'])
+        yield path
+    finally:
+        if os.path.exists(path):
+            _run_git(
+                checkout, ['worktree', 'remove', '--force', path], check=False
+            )
+        shutil.rmtree(parent, ignore_errors=True)
 
 
 @contextmanager
@@ -271,7 +322,8 @@ def apply_pr(
     src='/home/erp/src', owner='gisce', repository='erp', auto_exit=False,
     force_name=None, re_deploy=False, as_diff=False, environment='pro',
     reject=False, skip_rolling_check=False, no_set_label=False,
-    input_func=None, squash=False, skip_directory_pattern=None
+    input_func=None, squash=False, skip_directory_pattern=None,
+    simulation=False
 ):
     """Apply a GitHub pull request directly to a local checkout."""
     repository_name = force_name or repository
@@ -281,7 +333,8 @@ def apply_pr(
 
     try:
         validate_repository(
-            checkout, skip_rolling_check=skip_rolling_check
+            checkout, skip_rolling_check=skip_rolling_check,
+            allow_dirty=simulation,
         )
 
         if re_deploy:
@@ -308,35 +361,38 @@ def apply_pr(
             if response.upper() != 'Y':
                 raise LocalApplyError('Local deployment cancelled')
 
-        deploy_id = backend.mark_to_deploy(
-            pr_number,
-            hostname=hostname,
-            owner=owner,
-            repository=repository,
-        )
+        deploy_id = None
+        if not simulation:
+            deploy_id = backend.mark_to_deploy(
+                pr_number,
+                hostname=hostname,
+                owner=owner,
+                repository=repository,
+            )
     except Exception as error:
         _log_error(error)
         _tqdm_write(colors.red('Deploy failure \U0001F680'))
         return False
 
-    if not deploy_id:
+    if not simulation and not deploy_id:
         _tqdm_write(colors.magenta(
             'No deploy id! you must mark the Pull Request manually'
         ))
 
     workdir = tempfile.mkdtemp(prefix='sastre-local-')
     try:
-        backend.mark_deploy_status(
-            deploy_id,
-            state='pending',
-            owner=owner,
-            repository=repository,
-            environment=environment,
-            no_set_label=no_set_label,
-        )
-        _tqdm_write(colors.yellow(
-            'Marking to deploy ({}) \U0001F680'.format(deploy_id)
-        ))
+        if not simulation:
+            backend.mark_deploy_status(
+                deploy_id,
+                state='pending',
+                owner=owner,
+                repository=repository,
+                environment=environment,
+                no_set_label=no_set_label,
+            )
+            _tqdm_write(colors.yellow(
+                'Marking to deploy ({}) \U0001F680'.format(deploy_id)
+            ))
         with _working_directory(workdir):
             if as_diff:
                 backend.export_diff_from_github(
@@ -353,31 +409,28 @@ def apply_pr(
                     skip_directory_pattern=skip_directory_pattern,
                 )
 
-        if as_diff:
-            _tqdm_write(colors.yellow('Applying diff \U0001F648'))
-            diff_path = os.path.join(
-                workdir, 'deploy', 'patches', '{}.diff'.format(pr_number)
-            )
-            if not os.path.isfile(diff_path):
-                raise LocalApplyError(
-                    'The pull request diff was not downloaded'
+        def apply_to(target_checkout):
+            if as_diff:
+                _tqdm_write(colors.yellow('Applying diff \U0001F648'))
+                diff_path = os.path.join(
+                    workdir, 'deploy', 'patches', '{}.diff'.format(pr_number)
                 )
-            if os.path.getsize(diff_path):
-                _apply_diff(
-                    checkout,
-                    diff_path,
-                    pr_number,
-                    reject=reject,
-                    input_func=input_func,
-                )
-            else:
-                _tqdm_write(colors.green('Nothing to commit! Continue'))
-        else:
+                if not os.path.isfile(diff_path):
+                    raise LocalApplyError(
+                        'The pull request diff was not downloaded'
+                    )
+                if os.path.getsize(diff_path):
+                    _apply_diff(
+                        target_checkout, diff_path, pr_number, reject=reject,
+                        input_func=input_func,
+                    )
+                else:
+                    _tqdm_write(colors.green('Nothing to commit! Continue'))
+                return
             _tqdm_write(colors.yellow('Applying patches \U0001F648'))
             try:
                 patches = _select_patches(
-                    workdir,
-                    pr_number,
+                    workdir, pr_number,
                     from_number=0 if from_commit else from_number,
                 )
             except LocalApplyError:
@@ -386,15 +439,25 @@ def apply_pr(
                 patches = []
             if patches:
                 _apply_patches(
-                    checkout,
-                    patches,
-                    auto_exit=auto_exit,
-                    input_func=input_func,
-                    squash=squash,
+                    target_checkout, patches, auto_exit=auto_exit,
+                    input_func=input_func, squash=squash,
                     pr_number=pr_number,
                 )
             else:
                 _tqdm_write(colors.green('Nothing to commit! Continue'))
+
+        with _repository_lock(checkout):
+            if simulation:
+                with _simulation_worktree(checkout) as simulation_checkout:
+                    apply_to(simulation_checkout)
+            else:
+                apply_to(checkout)
+
+        if simulation:
+            _tqdm_write(colors.green(
+                'Simulation success: PR would apply'
+            ))
+            return True
 
         backend.mark_deploy_status(
             deploy_id,
@@ -409,15 +472,14 @@ def apply_pr(
         return True
     except Exception as error:
         _log_error(error)
-        _mark_failure(
-            backend,
-            deploy_id,
-            error,
-            owner,
-            repository,
-            no_set_label,
-        )
-        _tqdm_write(colors.red('Deploy failure \U0001F680'))
+        if not simulation:
+            _mark_failure(
+                backend, deploy_id, error, owner, repository, no_set_label,
+            )
+        _tqdm_write(colors.red(
+            'Simulation failure: PR would not apply' if simulation
+            else 'Deploy failure \U0001F680'
+        ))
         return False
     finally:
         shutil.rmtree(workdir)
