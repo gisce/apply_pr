@@ -141,17 +141,20 @@ class RemoteRepositoryLockTest(unittest.TestCase):
         finally:
             shutil.rmtree(lock_directory)
 
-    def test_rejects_lock_directory_with_unsafe_permissions(self):
+    def test_rejects_legacy_shared_lock_directory_with_migration_hint(self):
         lock_directory = tempfile.mkdtemp(prefix='apply-pr-lock-test-')
         try:
-            os.chmod(lock_directory, 0o777)
+            os.chmod(lock_directory, 0o1777)
             lock = RemoteRepositoryLock(
                 '/srv/src/erp/.git', LocalClient(), self.host_string, '178'
             )
             lock.lock_directory = lock_directory
 
-            with self.assertRaises(RepositoryLocked):
+            with self.assertRaises(RepositoryLocked) as raised:
                 lock.acquire()
+            self.assertIn('older apply_pr version', str(raised.exception))
+            self.assertIn('mode to 0700', str(raised.exception))
+            self.assertEqual(0o1777, os.stat(lock_directory).st_mode & 0o7777)
         finally:
             shutil.rmtree(lock_directory)
 

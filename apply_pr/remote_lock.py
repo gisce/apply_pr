@@ -64,7 +64,10 @@ class RemoteRepositoryLock(object):
             self.channel = None
             raise RepositoryLocked(
                 'Repository {} is locked or its lock directory is unsafe '
-                '({})'.format(
+                '({}). If /tmp/apply_pr-locks was created by an older '
+                'apply_pr version, stop every apply_pr process on the host, '
+                'verify that the directory is owned by the deployment user, '
+                'and change its mode to 0700 before retrying.'.format(
                     self.common_directory, lock_path
                 )
             )
