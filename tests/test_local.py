@@ -91,6 +91,66 @@ class LocalDeploymentTest(unittest.TestCase):
         self._git('reset', '-q', '--hard', 'HEAD^')
         return patch_path
 
+    def _repository_state(self):
+        return {
+            'head': self._git('rev-parse', 'HEAD'),
+            'status': self._git('status', '--porcelain'),
+            'stash': self._git('stash', 'list'),
+            'worktrees': self._git('worktree', 'list', '--porcelain'),
+        }
+
+    def _diff_backend(self):
+        patch_path = self.patch_path
+
+        class DiffBackend(FakeBackend):
+            def export_diff_from_github(
+                backend_self, pr_number, owner='gisce', repository='erp',
+                from_commit=None, skip_directory_pattern=None
+            ):
+                destination = os.path.join('deploy', 'patches')
+                os.makedirs(destination)
+                diff_path = os.path.join(
+                    destination, '{}.diff'.format(pr_number)
+                )
+                with open(patch_path, 'rb') as patch_stream:
+                    patch = patch_stream.read()
+                start = patch.index(b'diff --git ')
+                with open(diff_path, 'wb') as diff_stream:
+                    diff_stream.write(patch[start:])
+
+        return DiffBackend(self.patch_path)
+
+    def _assert_simulation(self, backend, expected, as_diff=False):
+        before = self._repository_state()
+        result = local.apply_pr(
+            backend, '42', src=self.src, repository='erp', auto_exit=True,
+            as_diff=as_diff, simulation=True,
+        )
+        self.assertEqual(result, expected)
+        self.assertEqual(self._repository_state(), before)
+        self.assertEqual(backend.deployments, [])
+        self.assertEqual(backend.statuses, [])
+
+    def test_simulates_patch_series_without_changing_dirty_target(self):
+        self._write('untracked.txt', 'keep me\n')
+        self._assert_simulation(FakeBackend(self.patch_path), True)
+
+    def test_failed_patch_series_simulation_preserves_target(self):
+        self._write('message.txt', 'conflicting target\n')
+        self._git('add', 'message.txt')
+        self._git('commit', '-q', '-m', 'Conflicting target change')
+        self._assert_simulation(FakeBackend(self.patch_path), False)
+
+    def test_simulates_diff_without_changing_dirty_target(self):
+        self._write('untracked.txt', 'keep me\n')
+        self._assert_simulation(self._diff_backend(), True, as_diff=True)
+
+    def test_failed_diff_simulation_preserves_target(self):
+        self._write('message.txt', 'conflicting target\n')
+        self._git('add', 'message.txt')
+        self._git('commit', '-q', '-m', 'Conflicting target change')
+        self._assert_simulation(self._diff_backend(), False, as_diff=True)
+
     def test_applies_patch_without_ssh_and_updates_deployment(self):
         backend = FakeBackend(self.patch_path)
 

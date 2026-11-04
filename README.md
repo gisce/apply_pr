@@ -118,6 +118,14 @@ sastre deploy --pr 123 --local --src /srv/src --environ test
 
 `--local` cannot be combined with `--host` or `--proxy`.
 
+### Simulate a deployment
+
+Add `--simulation` to either an SSH or `--local` deployment to run the same
+`git am` or `git apply` path in an isolated temporary worktree. The target's
+HEAD, index, working tree and stash are left untouched, and no GitHub
+deployment or deployed label is created. A conflict exits with status 1, so
+the command can be used directly from automation.
+
 ### Relevant deploy options
 
 Run `sastre deploy --help` for the authoritative full option list. Common
@@ -129,6 +137,7 @@ options include:
 | `--force-name NAME` | Use a different checkout directory name on the target. |
 | `--force-hostname NAME` | Override the hostname recorded in GitHub. |
 | `--re-deploy` | Resume from the last successful deployment commit. |
+| `--simulation` | Test applicability without changing the target or GitHub deployment state. |
 | `--skip-directory-pattern REGEX` | Exclude matching paths from patches or diffs. |
 | `--skip-rolling-check` | Bypass the target rolling-branch check. |
 | `--no-set-label` | Do not add the deployed environment label to the PR. |
